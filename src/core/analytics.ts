@@ -108,9 +108,11 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
       timezone: args.timezone ?? defaultTimezone(),
       traits: args.traits ?? {},
     }
-    const response = await post("/api/v1/growth/users", body)
+    // Notify bridges BEFORE the network call. Third-party SDKs (Clarity,
+    // PostHog, Sentry, Statsig) keep their own queues; if our ingest fails we
+    // still want them to see the identify so cross-tool sessions stay joinable.
     notifyBridges((b) => b.onIdentify?.({ userId, anonymousId, traits: args.traits ?? {} }))
-    return response
+    return post("/api/v1/growth/users", body)
   }
 
   async function track(eventName: string, properties?: GrowthEventProperties, trackArgs?: TrackArgs): Promise<IngestResponse> {
@@ -130,9 +132,10 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
       ...(trackArgs?.metricValue !== undefined ? { metricValue: trackArgs.metricValue } : {}),
       ...(trackArgs?.metricLabel !== undefined ? { metricLabel: trackArgs.metricLabel } : {}),
     }
-    const response = await post("/api/v1/growth/events", body)
+    // See identify() — bridges fire before the network post so third-party SDK
+    // queues survive ingest outages.
     notifyBridges((b) => b.onTrack?.({ eventName, properties: properties ?? {}, userId, anonymousId }))
-    return response
+    return post("/api/v1/growth/events", body)
   }
 
   async function trackFirstOpen(): Promise<IngestResponse> { return track("app.first_open") }
