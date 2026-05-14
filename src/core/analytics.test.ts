@@ -1,0 +1,145 @@
+import { describe, expect, it, vi } from "vitest"
+
+import { createGrowthAnalyticsCore } from "./analytics"
+import { MemoryStorage } from "./storage"
+import { GrowthAnalyticsError, type GrowthHttp, type GrowthHttpRequest } from "./types"
+
+function makeAnalytics(overrides: { http?: GrowthHttp } = {}) {
+  const calls: GrowthHttpRequest[] = []
+  const http: GrowthHttp = overrides.http ?? (async (request) => {
+    calls.push(request)
+    return {
+      status: 201,
+      body: JSON.stringify({ event: { id: "evt_1", eventName: "app.first_open" }, warnings: [] }),
+    }
+  })
+  const analytics = createGrowthAnalyticsCore({
+    app: "test-app",
+    endpoint: "https://example.gtmeasy.com",
+    writeKey: "gte_test",
+    environment: "staging",
+    platform: "web",
+    storage: new MemoryStorage(),
+    http,
+    generateId: () => "anon_fixed",
+    now: () => "2026-05-14T00:00:00.000Z",
+  })
+  return { analytics, calls }
+}
+
+describe("createGrowthAnalyticsCore", () => {
+  it("posts identify with anonymous id and userId", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.identify("user_123", { plan: "pro" })
+    expect(calls).toHaveLength(1)
+    const call = calls[0]!
+    expect(call.url).toBe("https://example.gtmeasy.com/api/v1/growth/users")
+    expect(call.headers["x-gtm-growth-key"]).toBe("gte_test")
+    const body = JSON.parse(call.body)
+    expect(body.userId).toBe("user_123")
+    expect(body.anonymousId).toBe("anon_fixed")
+    expect(body.traits).toEqual({ plan: "pro" })
+  })
+
+  it("retains userId across calls", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.identify("user_123")
+    await analytics.track("paywall.opened")
+    expect(JSON.parse(calls[1]!.body).userId).toBe("user_123")
+  })
+
+  it("track emits to events endpoint with iso timestamp", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.track("paywall.opened", { variant: "A" })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.eventName).toBe("paywall.opened")
+    expect(body.properties).toEqual({ variant: "A" })
+    expect(body.occurredAt).toBe("2026-05-14T00:00:00.000Z")
+    expect(body.source).toBe("native")
+  })
+
+  it("trackPurchaseCompleted sets metric value and currency", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.trackPurchaseCompleted({ amount: 9.99, currency: "USD", productId: "pro_monthly" })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.metricValue).toBe(9.99)
+    expect(body.metricLabel).toBe("USD")
+    expect(body.properties).toEqual({ currency: "USD", productId: "pro_monthly" })
+  })
+
+  it("throws GrowthAnalyticsError on non-2xx response", async () => {
+    const { analytics } = makeAnalytics({
+      http: async () => ({ status: 401, body: '{"error":"nope"}' }),
+    })
+    await expect(analytics.track("paywall.opened")).rejects.toBeInstanceOf(GrowthAnalyticsError)
+  })
+
+  it("bridges receive identify + track in order", async () => {
+    const { analytics } = makeAnalytics()
+    const identifyCalls: unknown[] = []
+    const trackCalls: unknown[] = []
+    analytics.addBridge({
+      name: "test",
+      onIdentify: (p) => { identifyCalls.push(p) },
+      onTrack: (p) => { trackCalls.push(p) },
+    })
+    await analytics.identify("u1", { plan: "pro" })
+    await analytics.track("paywall.opened", { variant: "A" })
+    expect(identifyCalls).toEqual([{ userId: "u1", anonymousId: "anon_fixed", traits: { plan: "pro" } }])
+    expect(trackCalls).toEqual([{ eventName: "paywall.opened", properties: { variant: "A" }, userId: "u1", anonymousId: "anon_fixed" }])
+  })
+
+  it("bridges that throw never break the SDK", async () => {
+    const { analytics, calls } = makeAnalytics()
+    analytics.addBridge({
+      name: "broken",
+      onTrack: () => { throw new Error("kaboom") },
+    })
+    await analytics.track("page.viewed")
+    expect(calls).toHaveLength(1)
+  })
+
+  it("addBridge returns an unsubscribe function", async () => {
+    const { analytics } = makeAnalytics()
+    const seen: string[] = []
+    const remove = analytics.addBridge({
+      name: "test",
+      onTrack: (p) => { seen.push(p.eventName) },
+    })
+    await analytics.track("a")
+    remove()
+    await analytics.track("b")
+    expect(seen).toEqual(["a"])
+  })
+
+  it("persists the anonymous id across calls via storage", async () => {
+    const store = new MemoryStorage()
+    const ids: string[] = []
+    const analytics = createGrowthAnalyticsCore({
+      app: "t", endpoint: "https://example.com", writeKey: "k",
+      storage: store,
+      http: async (req) => { ids.push(JSON.parse(req.body).anonymousId); return { status: 201, body: "{}" } },
+      generateId: vi.fn().mockReturnValueOnce("anon_1").mockReturnValueOnce("anon_2"),
+      now: () => "2026-01-01T00:00:00.000Z",
+    })
+    await analytics.track("a")
+    await analytics.track("b")
+    expect(ids[0]).toBe(ids[1])
+    expect(ids[0]).toBe("anon_1")
+  })
+
+  it("submitWebReferrer hits the attribution endpoint", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.submitWebReferrer("https://example.com?utm_source=t&gclid=abc", "abc")
+    expect(calls[0]!.url).toBe("https://example.gtmeasy.com/api/v1/growth/attribution/web-referrer")
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.webReferrer).toContain("utm_source=t")
+    expect(body.clickId).toBe("abc")
+  })
+
+  it("validates required configuration", () => {
+    expect(() => createGrowthAnalyticsCore({ app: "", endpoint: "x", writeKey: "y" })).toThrow(/app is required/)
+    expect(() => createGrowthAnalyticsCore({ app: "a", endpoint: "", writeKey: "y" })).toThrow(/endpoint is required/)
+    expect(() => createGrowthAnalyticsCore({ app: "a", endpoint: "x", writeKey: "" })).toThrow(/writeKey is required/)
+  })
+})

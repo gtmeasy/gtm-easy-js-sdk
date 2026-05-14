@@ -1,0 +1,94 @@
+{
+  "name": "@gtmeasy/growth",
+  "version": "0.1.0",
+  "description": "First-party SDK for GTM Easy growth analytics — web, Node, Bun, Deno, React Native. Bridges to Clarity, PostHog, Sentry, Statsig.",
+  "license": "MIT",
+  "author": "RockieStar Inc.",
+  "homepage": "https://github.com/gtmeasy/gtm-easy-js-sdk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gtmeasy/gtm-easy-js-sdk.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/core/index.cjs",
+  "module": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./web": {
+      "types": "./dist/web/index.d.ts",
+      "import": "./dist/web/index.js",
+      "require": "./dist/web/index.cjs"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js",
+      "require": "./dist/node/index.cjs"
+    },
+    "./react-native": {
+      "types": "./dist/react-native/index.d.ts",
+      "import": "./dist/react-native/index.js",
+      "require": "./dist/react-native/index.cjs"
+    },
+    "./bridges": {
+      "types": "./dist/bridges/index.d.ts",
+      "import": "./dist/bridges/index.js",
+      "require": "./dist/bridges/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/react-native": "^0.73.0",
+    "@vitest/coverage-v8": "^1.4.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.3",
+    "vitest": "^1.4.0"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.21.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "analytics",
+    "growth",
+    "attribution",
+    "clarity",
+    "posthog",
+    "sentry",
+    "statsig",
+    "gtm-easy",
+    "react-native"
+  ]
+}
