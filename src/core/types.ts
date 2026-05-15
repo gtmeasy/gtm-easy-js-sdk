@@ -1,10 +1,20 @@
 export type GrowthEnvironment = "production" | "staging" | "development"
 export type GrowthPlatform = "ios" | "android" | "web" | "macos" | "server"
 
+/**
+ * Production ingest host. The SDK defaults `endpoint` to this when omitted;
+ * override only for self-hosted deployments or local development.
+ */
+export const GROWTH_DEFAULT_ENDPOINT = "https://www.gtmeasy.com"
+
 export interface GrowthAnalyticsConfiguration {
   app: string
-  endpoint: string
   writeKey: string
+  /**
+   * Override the ingest host. Defaults to `GROWTH_DEFAULT_ENDPOINT` — only set
+   * this for self-hosted GTM Easy deployments or local development.
+   */
+  endpoint?: string
   environment?: GrowthEnvironment
   platform?: GrowthPlatform
   /** Override the per-call User-Agent. Web defaults to navigator.userAgent. */

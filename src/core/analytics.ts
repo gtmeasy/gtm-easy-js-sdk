@@ -2,6 +2,7 @@ import { fetchHttp } from "./http"
 import { MemoryStorage } from "./storage"
 import {
   GrowthAnalyticsError,
+  GROWTH_DEFAULT_ENDPOINT,
   type GrowthAnalytics,
   type GrowthAnalyticsConfiguration,
   type GrowthBridge,
@@ -25,12 +26,17 @@ interface BuiltAnalytics extends GrowthAnalytics {
  */
 export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): BuiltAnalytics {
   if (!input.app?.trim()) throw new Error("app is required")
-  if (!input.endpoint?.trim()) throw new Error("endpoint is required")
   if (!input.writeKey?.trim()) throw new Error("writeKey is required")
+  // `endpoint` is optional — defaults to the production ingest host. If the
+  // caller passed an explicit empty string we keep treating that as a
+  // misconfiguration since it's almost certainly unintended.
+  if (input.endpoint !== undefined && !input.endpoint.trim()) {
+    throw new Error("endpoint cannot be empty; omit it to use the production default")
+  }
 
   const config = {
     app: input.app.trim(),
-    endpoint: input.endpoint.replace(/\/+$/, ""),
+    endpoint: (input.endpoint ?? GROWTH_DEFAULT_ENDPOINT).replace(/\/+$/, ""),
     writeKey: input.writeKey,
     environment: input.environment ?? "production",
     platform: input.platform ?? "web",

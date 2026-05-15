@@ -27,14 +27,27 @@ import { createGrowthAnalytics } from "@gtmeasy/growth/web"
 
 export const analytics = createGrowthAnalytics({
   app: "<gtm-easy-app-id>",
-  endpoint: "https://www.gtmeasy.com",
   writeKey: "<per-app-write-key>",
-  environment: "production",
 })
 
 await analytics.identify("user_123", { plan: "pro" })
 await analytics.trackFirstOpen()
 await analytics.trackPurchaseCompleted({ amount: 9.99, currency: "USD", productId: "pro_monthly" })
+```
+
+`endpoint` defaults to the production ingest host
+(`https://www.gtmeasy.com` — exported as `GROWTH_DEFAULT_ENDPOINT`). Override
+only when running against a self-hosted deployment or local development:
+
+```ts
+import { createGrowthAnalytics } from "@gtmeasy/growth/web"
+
+export const analytics = createGrowthAnalytics({
+  app: "<gtm-easy-app-id>",
+  writeKey: "<per-app-write-key>",
+  endpoint: "https://your-self-hosted.example.com",
+  environment: "development",
+})
 ```
 
 ## Quick start — React Native
@@ -44,9 +57,7 @@ import { createGrowthAnalytics } from "@gtmeasy/growth/react-native"
 
 export const analytics = createGrowthAnalytics({
   app: "<gtm-easy-app-id>",
-  endpoint: "https://www.gtmeasy.com",
   writeKey: "<per-app-write-key>",
-  environment: "production",
 })
 
 await analytics.identify("user_123")
@@ -60,9 +71,7 @@ import { createGrowthAnalytics } from "@gtmeasy/growth/node"
 
 const analytics = createGrowthAnalytics({
   app: "<gtm-easy-app-id>",
-  endpoint: "https://www.gtmeasy.com",
   writeKey: "<server-write-key>",
-  environment: "production",
 })
 
 await analytics.track("subscription.renewed", { planId: "pro" }, { metricValue: 19.99, metricLabel: "USD" })

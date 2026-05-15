@@ -139,7 +139,12 @@ describe("createGrowthAnalyticsCore", () => {
 
   it("validates required configuration", () => {
     expect(() => createGrowthAnalyticsCore({ app: "", endpoint: "x", writeKey: "y" })).toThrow(/app is required/)
-    expect(() => createGrowthAnalyticsCore({ app: "a", endpoint: "", writeKey: "y" })).toThrow(/endpoint is required/)
+    expect(() => createGrowthAnalyticsCore({ app: "a", endpoint: "", writeKey: "y" })).toThrow(/endpoint cannot be empty/)
     expect(() => createGrowthAnalyticsCore({ app: "a", endpoint: "x", writeKey: "" })).toThrow(/writeKey is required/)
+  })
+
+  it("defaults endpoint to the production ingest host when omitted", () => {
+    const analytics = createGrowthAnalyticsCore({ app: "a", writeKey: "y" })
+    expect(analytics._config().endpoint).toBe("https://www.gtmeasy.com")
   })
 })

@@ -4,6 +4,7 @@ export { fetchHttp } from "./http"
 export { generateUuid } from "./uuid"
 export {
   GrowthAnalyticsError,
+  GROWTH_DEFAULT_ENDPOINT,
   type GrowthAnalytics,
   type GrowthAnalyticsConfiguration,
   type GrowthBridge,
