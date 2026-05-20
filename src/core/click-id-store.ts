@@ -33,6 +33,10 @@ export interface ClickRecord {
 
 export class GrowthClickIdStore {
   private readonly storage: GrowthStorage
+  // Concurrent first-call writes for `_fbp` would generate distinct values,
+  // splitting Meta's identity match. The in-flight promise serialises them so
+  // every caller observes the same persisted value.
+  private fbpInFlight: Promise<string> | null = null
 
   constructor(storage: GrowthStorage) {
     this.storage = storage
@@ -72,12 +76,20 @@ export class GrowthClickIdStore {
 
   /** Meta's persistent `_fbp` per install. `fb.1.{ts_ms}.{rand}` — set once, never rotates. */
   async ensureFbp(now: number = Date.now()): Promise<string> {
-    const existing = await this.current("fbp", Number.POSITIVE_INFINITY, now)
-    if (existing) return existing
-    const rand = Math.floor(Math.random() * (Number.MAX_SAFE_INTEGER - 1_000_000_000)) + 1_000_000_000
-    const value = `fb.1.${now}.${rand}`
-    await this.record("fbp", value, now)
-    return value
+    if (this.fbpInFlight) return this.fbpInFlight
+    this.fbpInFlight = (async () => {
+      const existing = await this.current("fbp", Number.POSITIVE_INFINITY, now)
+      if (existing) return existing
+      const rand = Math.floor(Math.random() * (Number.MAX_SAFE_INTEGER - 1_000_000_000)) + 1_000_000_000
+      const value = `fb.1.${now}.${rand}`
+      await this.record("fbp", value, now)
+      return value
+    })()
+    try {
+      return await this.fbpInFlight
+    } finally {
+      this.fbpInFlight = null
+    }
   }
 
   /** Walk a URL search string, persist any known click ids. Returns the count captured. */

@@ -59,6 +59,12 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
 
   let userId: string | null = null
   const bridges = new Set<GrowthBridge>()
+  // First-call init for the anonymous id is racy without a lock: identify()
+  // and track() can run in parallel, both miss the persisted key, both
+  // generate fresh ids, and we'd send split identities for a single session.
+  // The in-flight promise lock ensures any concurrent callers observe the
+  // same id.
+  let anonymousIdInFlight: Promise<string> | null = null
 
   async function commonContext(): Promise<GrowthEventProperties> {
     const ctx: GrowthEventProperties = {}
@@ -73,11 +79,22 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   }
 
   async function getAnonymousId(): Promise<string> {
-    const existing = await Promise.resolve(config.storage.get(ANON_KEY))
-    if (existing) return existing
-    const fresh = config.generateId()
-    await Promise.resolve(config.storage.set(ANON_KEY, fresh))
-    return fresh
+    if (anonymousIdInFlight) return anonymousIdInFlight
+    anonymousIdInFlight = (async () => {
+      const existing = await Promise.resolve(config.storage.get(ANON_KEY))
+      if (existing) return existing
+      const fresh = config.generateId()
+      await Promise.resolve(config.storage.set(ANON_KEY, fresh))
+      return fresh
+    })()
+    try {
+      return await anonymousIdInFlight
+    } finally {
+      // Clear only after the read completes — failed reads (e.g., storage
+      // quota) should not poison the cache, but successful ones don't need
+      // to hold the promise indefinitely since storage is now warm.
+      anonymousIdInFlight = null
+    }
   }
 
   async function post(path: string, body: Record<string, unknown>): Promise<IngestResponse> {
