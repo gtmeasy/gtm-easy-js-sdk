@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from "react"
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import * as Linking from "expo-linking"
 import { StatusBar } from "expo-status-bar"
-import { defaultDebugSink, type DebugEvent } from "@gtmeasy/growth"
+import {
+  defaultDebugSink,
+  trackPaywallOpened,
+  trackPaywallPlanSelected,
+  trackPaywallUpgradeClicked,
+  trackPaywallUpgradeCancelled,
+  type DebugEvent,
+} from "@gtmeasy/growth"
 
 import { analytics } from "./growthClient"
 
@@ -19,23 +26,30 @@ import { analytics } from "./growthClient"
  *   - Debug Console  — tail of defaultDebugSink (every identify+track)
  */
 export default function App() {
-  // ───────────────────────────────────────────────────────── lifecycle
+  // ───────────────────────────────────────────────────── launch sequence
+  // Run in a fixed order so the first event already carries any inbound
+  // click IDs in _ctx:
+  //   1. await Linking.getInitialURL() + captureClickIds
+  //   2. trackFirstOpen (idempotent — server dedupes by identityHash)
+  //   3. trackAppOpen (every cold start)
+  // Firing trackFirstOpen/trackAppOpen in a separate parallel useEffect
+  // races getInitialURL() and ships the launch events without attribution.
   useEffect(() => {
-    void analytics.trackFirstOpen()
-    void analytics.trackAppOpen()
-  }, [])
-
-  // Capture click ids from inbound deep links + the initial URL the app
-  // launched with.
-  useEffect(() => {
+    let cancelled = false
     void (async () => {
       const initial = await Linking.getInitialURL()
+      if (cancelled) return
       if (initial) await analytics.captureClickIds(initial)
+      void analytics.trackFirstOpen()
+      void analytics.trackAppOpen()
     })()
     const sub = Linking.addEventListener("url", ({ url }) => {
       void analytics.captureClickIds(url)
     })
-    return () => sub.remove()
+    return () => {
+      cancelled = true
+      sub.remove()
+    }
   }, [])
 
   // ───────────────────────────────────────────────────────── debug tail
@@ -63,12 +77,15 @@ export default function App() {
   const placement = "sample_paywall"
   const productId = "twilar.yearly.49_99"
 
-  // Memoised button factory so each Button gets a stable handler.
+  // Memoised button factory using the typed paywall helpers from
+  // `@gtmeasy/growth` — connectors (Meta CAPI, Google Ads, TikTok Events)
+  // depend on the canonical payload shapes these wrappers enforce, so
+  // hand-rolling the same `track("paywall.…")` payloads would drift over time.
   const handlers = useMemo(() => ({
-    paywallOpened: () => void analytics.track("paywall.opened", { placement, product_ids: [productId] }),
-    planSelected: () => void analytics.track("paywall.plan_selected", { placement, product_id: productId, price: 49.99, currency: "USD" }),
-    upgradeClicked: () => void analytics.track("paywall.upgrade_clicked", { placement, product_id: productId, price: 49.99, currency: "USD" }),
-    upgradeCancelled: () => void analytics.track("paywall.upgrade_cancelled", { placement, product_id: productId, reason: "user_cancelled_sheet" }),
+    paywallOpened: () => void trackPaywallOpened(analytics, { placement, productIds: [productId] }),
+    planSelected: () => void trackPaywallPlanSelected(analytics, { placement, productId, price: 49.99, currency: "USD" }),
+    upgradeClicked: () => void trackPaywallUpgradeClicked(analytics, { placement, productId, price: 49.99, currency: "USD" }),
+    upgradeCancelled: () => void trackPaywallUpgradeCancelled(analytics, { placement, productId, reason: "user_cancelled_sheet" }),
     purchase: () => void analytics.trackPurchaseCompleted({ amount: 49.99, currency: "USD", productId }),
   }), [])
 

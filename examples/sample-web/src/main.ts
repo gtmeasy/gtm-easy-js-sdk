@@ -11,7 +11,7 @@ import { defaultDebugSink } from "@gtmeasy/growth"
  * Defaults below point at the LAN staging endpoint used by the GTM Easy
  * monorepo, with a placeholder write key.
  */
-const ENDPOINT = import.meta.env.VITE_GROWTH_ENDPOINT ?? "http://192.168.3.241:3000"
+const ENDPOINT = import.meta.env.VITE_GROWTH_ENDPOINT ?? "https://www.gtmeasy.com"
 const WRITE_KEY = import.meta.env.VITE_GROWTH_WRITE_KEY ?? "wk_sample_replace_me"
 
 const analytics = createGrowthAnalytics({
