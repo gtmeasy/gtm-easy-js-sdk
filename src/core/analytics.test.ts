@@ -38,7 +38,8 @@ describe("createGrowthAnalyticsCore", () => {
     const body = JSON.parse(call.body)
     expect(body.userId).toBe("user_123")
     expect(body.anonymousId).toBe("anon_fixed")
-    expect(body.traits).toEqual({ plan: "pro" })
+    expect(body.traits).toMatchObject({ plan: "pro" })
+    expect(body.traits._ctx).toMatchObject({ sdk: "gtm-easy-js", sdk_version: expect.any(String) })
   })
 
   it("retains userId across calls", async () => {
@@ -53,7 +54,8 @@ describe("createGrowthAnalyticsCore", () => {
     await analytics.track("paywall.opened", { variant: "A" })
     const body = JSON.parse(calls[0]!.body)
     expect(body.eventName).toBe("paywall.opened")
-    expect(body.properties).toEqual({ variant: "A" })
+    expect(body.properties).toMatchObject({ variant: "A" })
+    expect(body.properties._ctx).toMatchObject({ sdk: "gtm-easy-js" })
     expect(body.occurredAt).toBe("2026-05-14T00:00:00.000Z")
     expect(body.source).toBe("native")
   })
@@ -64,7 +66,7 @@ describe("createGrowthAnalyticsCore", () => {
     const body = JSON.parse(calls[0]!.body)
     expect(body.metricValue).toBe(9.99)
     expect(body.metricLabel).toBe("USD")
-    expect(body.properties).toEqual({ currency: "USD", productId: "pro_monthly" })
+    expect(body.properties).toMatchObject({ currency: "USD", productId: "pro_monthly" })
   })
 
   it("throws GrowthAnalyticsError on non-2xx response", async () => {
