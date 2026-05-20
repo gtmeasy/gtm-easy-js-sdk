@@ -2,7 +2,16 @@
 
 First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics — works in **browsers**, **Node**, **Bun**, **Deno**, and **React Native** with a single package and explicit subpath exports.
 
-Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
+Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
+
+## What's new (v0.2.0)
+
+- **Click ID store**: `GrowthClickIdStore` persists `fbc/fbp/fbclid/gclid/wbraid/gbraid/ttclid/igshid/msclkid/twclid` with 90-day TTL. `analytics.captureClickIds(url)` walks deep links + landing-page query strings.
+- **Auto-instrumentation upgrade**: `installAutoInstrumentation(analytics, { trackReferrer: true })` now captures all click IDs in addition to the historic `gclid`/`fbclid` + UTM.
+- **Typed paywall helpers**: `trackPaywallOpened`, `trackPaywallPlanSelected`, `trackPaywallUpgradeClicked`, `trackPaywallUpgradeCancelled`, `trackPaywallClosed`, `trackTrialStarted`, `trackRestoreCompleted`.
+- **Debug sink**: `createGrowthAnalytics({ debug: true })` mirrors every event to `defaultDebugSink` (subscribable) and `console.log`.
+- **Device context provider**: pluggable `DeviceContextProvider` — `webDeviceContextProvider` collects UA/viewport/screen; React Native apps inject their own bridge.
+- **Generated typed client**: `src/generated/` contains an `openapi-generator-cli` `typescript-fetch` low-level client that mirrors the server contract.
 
 - **Microsoft Clarity** (session replay)
 - **PostHog** (cloud or self-hosted)

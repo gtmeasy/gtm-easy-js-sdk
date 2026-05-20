@@ -1,4 +1,6 @@
 import { createGrowthAnalyticsCore } from "../core/analytics"
+import { GrowthClickIdStore } from "../core/click-id-store"
+import { webDeviceContextProvider } from "../core/device-context"
 import { WebStorage } from "../core/storage"
 import type { GrowthAnalytics, GrowthAnalyticsConfiguration } from "../core/types"
 
@@ -12,10 +14,13 @@ export type WebGrowthAnalyticsConfiguration = Omit<GrowthAnalyticsConfiguration,
  * in localStorage (with an in-memory fallback for private mode / quota).
  */
 export function createGrowthAnalytics(config: WebGrowthAnalyticsConfiguration): GrowthAnalytics {
+  const storage = config.storage ?? new WebStorage()
   return createGrowthAnalyticsCore({
     ...config,
     platform: config.platform ?? "web",
-    storage: config.storage ?? new WebStorage(),
+    storage,
+    deviceContext: config.deviceContext ?? webDeviceContextProvider,
+    clickIdStore: config.clickIdStore ?? new GrowthClickIdStore(storage),
   })
 }
 
@@ -84,9 +89,12 @@ export function installAutoInstrumentation(
   if (options.trackReferrer ?? true) {
     try {
       const params = new URLSearchParams(window.location.search)
-      const utm = Array.from(params.entries()).filter(([k]) => k.startsWith("utm_") || k === "gclid" || k === "fbclid")
+      // Persist every recognized click id (fbclid/gclid/ttclid/wbraid/gbraid/
+      // msclkid/twclid/igshid) so subsequent events automatically carry them.
+      analytics.captureClickIds(params).catch(() => { /* swallow */ })
+      const utm = Array.from(params.entries()).filter(([k]) => k.startsWith("utm_") || k === "gclid" || k === "fbclid" || k === "ttclid")
       if (utm.length) {
-        const clickId = params.get("gclid") ?? params.get("fbclid")
+        const clickId = params.get("gclid") ?? params.get("fbclid") ?? params.get("ttclid")
         analytics.submitWebReferrer(window.location.href, clickId).catch(() => { /* swallow */ })
       }
     } catch { /* ignore */ }

@@ -27,6 +27,25 @@ export interface GrowthAnalyticsConfiguration {
   generateId?: () => string
   /** Pluggable now function. Used for tests; default returns ISO timestamp. */
   now?: () => string
+  /**
+   * When true, every identify/track is mirrored to the debug sink before the
+   * network call. The sink emits to subscribers + `console.log`.
+   */
+  debug?: boolean
+  /**
+   * Device-level common context provider. Platform packages supply sensible
+   * defaults; host apps can override to attach IDFA/GAID/IDFV from native
+   * bridges.
+   */
+  deviceContext?: import("./device-context").DeviceContextProvider
+  /**
+   * Click-id store for fbc/fbp/gclid/ttclid persistence. Platform packages
+   * construct one backed by their default storage; pass your own to share an
+   * instance across SDK instances.
+   */
+  clickIdStore?: import("./click-id-store").GrowthClickIdStore
+  /** Override debug sink for testing. */
+  debugSink?: import("./debug").GrowthDebugSink
 }
 
 export interface GrowthStorage {
@@ -102,6 +121,10 @@ export interface GrowthAnalytics {
   setUserId(userId: string | null): void
   getUserId(): string | null
   getAnonymousId(): Promise<string>
+  /** Record a click id captured externally (e.g. from a deep-link handler). */
+  recordClickId(provider: string, value: string): Promise<void>
+  /** Capture all known click ids from a URL or query string. Returns count captured. */
+  captureClickIds(input: string | URL | URLSearchParams): Promise<number>
 }
 
 export class GrowthAnalyticsError extends Error {
