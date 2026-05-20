@@ -15,6 +15,7 @@ Name | Type
 `attribution_signature` | string
 `redownload` | boolean
 `source_app_id` | number
+`source_domain` | string
 `fidelity_type` | number
 `conversion_value` | number
 `coarse_conversion_value` | string
@@ -37,6 +38,7 @@ const example = {
   "attribution_signature": null,
   "redownload": null,
   "source_app_id": null,
+  "source_domain": null,
   "fidelity_type": null,
   "conversion_value": null,
   "coarse_conversion_value": null,

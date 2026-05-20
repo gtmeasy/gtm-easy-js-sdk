@@ -207,7 +207,10 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
       userId,
       anonymousId,
       platform: "web",
-      source: "native",
+      // Web referrer originates in the browser; downstream analytics segment
+      // by `source` so calling this `native` would mislabel attributable web
+      // installs as native-app installs.
+      source: "web",
       occurredAt: config.now(),
       webReferrer: referrer,
       clickId: click_id ?? null,

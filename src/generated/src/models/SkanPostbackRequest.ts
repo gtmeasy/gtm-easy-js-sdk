@@ -76,6 +76,12 @@ export interface SkanPostbackRequest {
     source_app_id?: number;
     /**
      * 
+     * @type {string}
+     * @memberof SkanPostbackRequest
+     */
+    source_domain?: string;
+    /**
+     * 
      * @type {number}
      * @memberof SkanPostbackRequest
      */
@@ -150,6 +156,7 @@ export function SkanPostbackRequestFromJSONTyped(json: any, ignoreDiscriminator:
         'attribution_signature': json['attribution-signature'],
         'redownload': json['redownload'] == null ? undefined : json['redownload'],
         'source_app_id': json['source-app-id'] == null ? undefined : json['source-app-id'],
+        'source_domain': json['source-domain'] == null ? undefined : json['source-domain'],
         'fidelity_type': json['fidelity-type'] == null ? undefined : json['fidelity-type'],
         'conversion_value': json['conversion-value'] == null ? undefined : json['conversion-value'],
         'coarse_conversion_value': json['coarse-conversion-value'] == null ? undefined : json['coarse-conversion-value'],
@@ -179,6 +186,7 @@ export function SkanPostbackRequestToJSONTyped(value?: SkanPostbackRequest | nul
         'attribution-signature': value['attribution_signature'],
         'redownload': value['redownload'],
         'source-app-id': value['source_app_id'],
+        'source-domain': value['source_domain'],
         'fidelity-type': value['fidelity_type'],
         'conversion-value': value['conversion_value'],
         'coarse-conversion-value': value['coarse_conversion_value'],
