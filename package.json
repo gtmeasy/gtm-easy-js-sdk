@@ -7,7 +7,7 @@
   "homepage": "https://github.com/gtmeasy/gtm-easy-js-sdk",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gtmeasy/gtm-easy-js-sdk.git"
+    "url": "git+https://github.com/gtmeasy/gtm-easy-js-sdk.git"
   },
   "type": "module",
   "sideEffects": false,

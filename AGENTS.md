@@ -72,7 +72,7 @@ Two channels, both driven by `.github/workflows/release.yml`:
 
 ### Required secrets
 
-- `NPM_TOKEN` — npm automation token with publish access to `@gtmeasy/growth`. Configured on the repo. Rotate via npm dashboard → Access Tokens; update via `gh secret set NPM_TOKEN -R gtmeasy/gtm-easy-js-sdk`.
+- `NPM_TOKEN` — npm **Automation** token with publish access to `@gtmeasy/growth`. Classic tokens fail in CI with `npm error code EOTP` because npm enforces 2FA on writes; Automation tokens are the documented exception that skip the OTP prompt. Generate via npmjs.com → Access Tokens → Generate New Token → **Automation**. Update via `gh secret set NPM_TOKEN -R gtmeasy/gtm-easy-js-sdk`.
 
 ### Provenance
 
