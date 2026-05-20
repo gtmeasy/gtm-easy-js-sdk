@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Twilar Sample",
+    "slug": "twilar-sample",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "twilar",
+    "ios": { "bundleIdentifier": "com.gtmeasy.twilarsample" },
+    "android": { "package": "com.gtmeasy.twilarsample" }
+  }
+}

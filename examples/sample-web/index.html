@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twilar Sample — GTM Easy Growth Web SDK</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.4;
+      }
+      body { margin: 0; padding: 2rem; max-width: 880px; margin-inline: auto; }
+      h1 { margin-block: 0 0.5rem; }
+      h2 { margin-block: 2rem 0.5rem; font-size: 1.1rem; }
+      .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.5rem; }
+      button { padding: 0.6rem 1rem; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
+      button:hover { background: #f3f3f3; }
+      .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.75rem; margin-right: 0.5rem; }
+      input, textarea { padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font: inherit; box-sizing: border-box; }
+      input { width: 22rem; max-width: 100%; }
+      textarea { width: 100%; min-height: 4rem; font-family: ui-monospace, monospace; }
+      pre { background: rgba(127,127,127,0.1); padding: 1rem; border-radius: 6px; overflow-x: auto; max-height: 360px; }
+      #log { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85rem; }
+      .group { padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin-block: 1rem; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #1e1e1f; color: #eee; }
+        button { background: #2c2c2e; color: #eee; border-color: #555; }
+        button:hover { background: #3a3a3c; }
+        .group { border-color: #333; }
+        input, textarea { background: #2c2c2e; color: #eee; border-color: #555; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Twilar Sample <span class="pill">Web SDK</span></h1>
+    <p>
+      Vanilla TS sample for <code>@gtmeasy/growth/web</code>. Open the browser
+      console + the live log below to see every event the SDK ships to
+      <code>/api/v1/growth/*</code>.
+    </p>
+
+    <div class="group">
+      <h2>1. Lifecycle</h2>
+      <div class="row">
+        <button id="firstOpen">trackFirstOpen()</button>
+        <button id="appOpened">trackAppOpen()</button>
+        <button id="pageViewed">track('page.viewed')</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>2. Identity</h2>
+      <div class="row">
+        <input id="userId" placeholder="user id (e.g. usr_42)" />
+      </div>
+      <div class="row">
+        <input id="email" placeholder="email (optional)" />
+        <input id="phone" placeholder="phone E.164 (optional)" />
+      </div>
+      <div class="row">
+        <button id="identifyBtn">identify(traits)</button>
+        <button id="setUserIdBtn">setUserId only</button>
+        <button id="readAnonBtn">getAnonymousId()</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>3. Click IDs</h2>
+      <div class="row" style="flex-direction:column">
+        <textarea id="deepLink">https://twilar.com/?gclid=demo123&amp;fbclid=demoFB&amp;utm_campaign=spring_sale</textarea>
+      </div>
+      <div class="row">
+        <button id="captureBtn">captureClickIds(url)</button>
+        <button id="recordGclidBtn">recordClickId('gclid', 'test_g_123')</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>4. Funnel</h2>
+      <div class="row">
+        <button data-evt="onboarding.completed">onboarding.completed</button>
+        <button data-paywall="opened">paywall.opened</button>
+        <button data-paywall="plan_selected">paywall.plan_selected</button>
+        <button data-paywall="upgrade_clicked">paywall.upgrade_clicked</button>
+        <button data-paywall="upgrade_cancelled">paywall.upgrade_cancelled</button>
+        <button id="purchaseBtn">purchase.completed ($49.99)</button>
+        <button data-paywall="closed">paywall.closed</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>5. Auto-instrumentation</h2>
+      <p>Buttons below carry <code>data-gtm-event="…"</code> and fire via the
+      installed <code>installAutoInstrumentation</code> click handler.</p>
+      <div class="row">
+        <button data-gtm-event="cta.hero_clicked">cta.hero_clicked (auto)</button>
+        <button data-gtm-event="cta.pricing_clicked">cta.pricing_clicked (auto)</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Live log</h2>
+      <pre id="log"></pre>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
