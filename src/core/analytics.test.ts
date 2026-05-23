@@ -87,7 +87,7 @@ describe("createGrowthAnalyticsCore", () => {
     })
     await analytics.identify("u1", { plan: "pro" })
     await analytics.track("paywall.opened", { variant: "A" })
-    expect(identifyCalls).toEqual([{ userId: "u1", anonymousId: "anon_fixed", traits: { plan: "pro" } }])
+    expect(identifyCalls).toEqual([{ userId: "u1", anonymousId: "anon_fixed", username: null, email: null, traits: { plan: "pro" } }])
     expect(trackCalls).toEqual([{ eventName: "paywall.opened", properties: { variant: "A" }, userId: "u1", anonymousId: "anon_fixed" }])
   })
 
@@ -148,5 +148,69 @@ describe("createGrowthAnalyticsCore", () => {
   it("defaults endpoint to the production ingest host when omitted", () => {
     const analytics = createGrowthAnalyticsCore({ app: "a", writeKey: "y" })
     expect(analytics._config().endpoint).toBe("https://www.gtmeasy.com")
+  })
+
+  it("sends first-class username and email on identify", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.identify({ userId: "u1", username: "john_wayne", email: "John@Example.com " })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.userId).toBe("u1")
+    expect(body.username).toBe("john_wayne")
+    // Client trims; server lowercases — we keep the trimmed plaintext here.
+    expect(body.email).toBe("John@Example.com")
+  })
+
+  it("blank username/email collapse to null", async () => {
+    const { analytics, calls } = makeAnalytics()
+    await analytics.identify({ userId: "u1", username: "   ", email: "" })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.username).toBeNull()
+    expect(body.email).toBeNull()
+  })
+
+  it("persists identity so a fresh instance still attributes tracks", async () => {
+    const store = new MemoryStorage()
+    const base = {
+      app: "t", endpoint: "https://example.com", writeKey: "k",
+      storage: store,
+      http: async () => ({ status: 201, body: "{}" }),
+      generateId: () => "anon_fixed",
+      now: () => "2026-01-01T00:00:00.000Z",
+    } as const
+
+    const first = createGrowthAnalyticsCore(base)
+    await first.identify({ userId: "u1", username: "jw", email: "jw@example.com" })
+
+    // Simulate an app restart: brand new instance, same durable storage.
+    const calls: GrowthHttpRequest[] = []
+    const second = createGrowthAnalyticsCore({
+      ...base,
+      http: async (req) => { calls.push(req); return { status: 201, body: "{}" } },
+    })
+    await second.track("paywall.opened")
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.userId).toBe("u1")
+    expect(second.getUserId()).toBe("u1")
+  })
+
+  it("reset clears identity and rotates the anonymous id", async () => {
+    const store = new MemoryStorage()
+    const calls: GrowthHttpRequest[] = []
+    let n = 0
+    const analytics = createGrowthAnalyticsCore({
+      app: "t", endpoint: "https://example.com", writeKey: "k",
+      storage: store,
+      http: async (req) => { calls.push(req); return { status: 201, body: "{}" } },
+      generateId: () => `anon_${++n}`,
+      now: () => "2026-01-01T00:00:00.000Z",
+    })
+    await analytics.identify({ userId: "u1", email: "u1@example.com" })
+    const before = await analytics.getAnonymousId()
+    await analytics.reset()
+    expect(analytics.getUserId()).toBeNull()
+    await analytics.track("app.opened")
+    const body = JSON.parse(calls[calls.length - 1]!.body)
+    expect(body.userId).toBeNull()
+    expect(body.anonymousId).not.toBe(before)
   })
 })

@@ -56,9 +56,14 @@ export interface StatsigLike {
 export function installClarityBridge(analytics: GrowthAnalytics, clarity: ClarityLike): () => void {
   return analytics.addBridge({
     name: "clarity",
-    onIdentify({ userId, anonymousId, traits }) {
+    onIdentify({ userId, anonymousId, username, email, traits }) {
       const id = userId ?? anonymousId
-      safe(() => clarity("identify", id))
+      // Clarity's 5th positional arg is a friendly name shown in the dashboard.
+      const friendly = username ?? email
+      if (friendly) safe(() => clarity("identify", id, undefined, undefined, friendly))
+      else safe(() => clarity("identify", id))
+      if (email) safe(() => clarity("set", "email", email))
+      if (username) safe(() => clarity("set", "username", username))
       for (const [key, value] of Object.entries(traits)) {
         if (value == null) continue
         safe(() => clarity("set", key, String(value)))
@@ -73,11 +78,17 @@ export function installClarityBridge(analytics: GrowthAnalytics, clarity: Clarit
 export function installPostHogBridge(analytics: GrowthAnalytics, posthog: PostHogLike): () => void {
   return analytics.addBridge({
     name: "posthog",
-    onIdentify({ userId, anonymousId, traits }) {
-      safe(() => posthog.identify(userId ?? anonymousId, traits))
+    onIdentify({ userId, anonymousId, username, email, traits }) {
+      const props: Record<string, unknown> = { ...traits }
+      if (email) props.email = email
+      if (username) props.name = username
+      safe(() => posthog.identify(userId ?? anonymousId, props))
     },
     onTrack({ eventName, properties }) {
       safe(() => posthog.capture(eventName, properties))
+    },
+    onReset() {
+      safe(() => posthog.reset?.())
     },
   })
 }
@@ -85,9 +96,12 @@ export function installPostHogBridge(analytics: GrowthAnalytics, posthog: PostHo
 export function installSentryBridge(analytics: GrowthAnalytics, sentry: SentryLike): () => void {
   return analytics.addBridge({
     name: "sentry",
-    onIdentify({ userId, anonymousId, traits }) {
+    onIdentify({ userId, anonymousId, username, email, traits }) {
       const id = userId ?? anonymousId
-      safe(() => sentry.setUser({ id, ...flatten(traits) }))
+      const user: { id: string; username?: string; email?: string; [k: string]: unknown } = { id, ...flatten(traits) }
+      if (username) user.username = username
+      if (email) user.email = email
+      safe(() => sentry.setUser(user))
     },
     onTrack({ eventName, properties }) {
       safe(() =>
@@ -99,19 +113,32 @@ export function installSentryBridge(analytics: GrowthAnalytics, sentry: SentryLi
         }),
       )
     },
+    onReset() {
+      safe(() => sentry.setUser(null))
+    },
   })
 }
 
 export function installStatsigBridge(analytics: GrowthAnalytics, statsig: StatsigLike): () => void {
   return analytics.addBridge({
     name: "statsig",
-    onIdentify({ userId, anonymousId, traits }) {
-      safe(() => statsig.updateUser({ userID: userId ?? anonymousId, custom: flatten(traits) }))
+    onIdentify({ userId, anonymousId, username, email, traits }) {
+      const custom = flatten(traits)
+      if (username) custom.username = username
+      const user: { userID: string; email?: string; custom: Record<string, unknown> } = {
+        userID: userId ?? anonymousId,
+        custom,
+      }
+      if (email) user.email = email
+      safe(() => statsig.updateUser(user))
     },
     onTrack({ eventName, properties }) {
       // Use metric value from "metricValue" property if present, else null.
       const value = typeof properties.metricValue === "number" ? properties.metricValue : null
       safe(() => statsig.logEvent(eventName, value, properties))
+    },
+    onReset() {
+      safe(() => statsig.updateUser({ userID: "", custom: {} }))
     },
   })
 }

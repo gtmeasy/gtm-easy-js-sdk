@@ -16,9 +16,12 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.2.0"
+export const GROWTH_JS_SDK_VERSION = "0.3.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
+const USER_ID_KEY = "gtm_easy_growth_user_id"
+const USERNAME_KEY = "gtm_easy_growth_username"
+const EMAIL_KEY = "gtm_easy_growth_email"
 
 interface BuiltAnalytics extends GrowthAnalytics {
   /** Internal: exposed so platform adapters (web, RN, node) can fan out auto-instrumentation. */
@@ -58,13 +61,65 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   }
 
   let userId: string | null = null
+  let username: string | null = null
+  let email: string | null = null
+  // The anonymous id is cached in memory (not re-read from storage per call) so
+  // that track()/identify() can snapshot (userId, anonymousId) with two plain
+  // synchronous reads — no `await` between them — making the pair tear-proof
+  // against a concurrent reset() on this single-threaded runtime.
+  let anonymousId: string | null = null
   const bridges = new Set<GrowthBridge>()
-  // First-call init for the anonymous id is racy without a lock: identify()
-  // and track() can run in parallel, both miss the persisted key, both
-  // generate fresh ids, and we'd send split identities for a single session.
-  // The in-flight promise lock ensures any concurrent callers observe the
-  // same id.
-  let anonymousIdInFlight: Promise<string> | null = null
+  // Identity (userId/username/email/anonymousId) is durable: persisted to storage
+  // so a track() after an app restart still carries the resolved user — matching
+  // DataFast's "re-identify on session change" model. Hydrated once, lazily. The
+  // in-flight promise lock also prevents two concurrent first-calls from each
+  // generating a different anonymous id and splitting a session.
+  let identityHydrated = false
+  let identityInFlight: Promise<void> | null = null
+
+  async function ensureIdentity(): Promise<void> {
+    if (identityHydrated) return
+    if (!identityInFlight) {
+      identityInFlight = (async () => {
+        const [storedUser, storedName, storedEmail, storedAnon] = await Promise.all([
+          Promise.resolve(config.storage.get(USER_ID_KEY)),
+          Promise.resolve(config.storage.get(USERNAME_KEY)),
+          Promise.resolve(config.storage.get(EMAIL_KEY)),
+          Promise.resolve(config.storage.get(ANON_KEY)),
+        ])
+        // If a concurrent reset()/identify() finalized identity while these reads
+        // were in flight, abort — otherwise we'd resurrect the pre-reset user from
+        // a storage snapshot taken before reset() cleared it.
+        if (identityHydrated) return
+        // Only fill from storage when the in-memory slot is still empty, so a
+        // concurrent identify() that already set the live value wins.
+        if (userId === null && storedUser) userId = storedUser
+        if (username === null && storedName) username = storedName
+        if (email === null && storedEmail) email = storedEmail
+        if (anonymousId === null) {
+          if (storedAnon) {
+            anonymousId = storedAnon
+          } else {
+            anonymousId = config.generateId()
+            await Promise.resolve(config.storage.set(ANON_KEY, anonymousId))
+          }
+        }
+        identityHydrated = true
+      })()
+    }
+    try {
+      await identityInFlight
+    } finally {
+      identityInFlight = null
+    }
+  }
+
+  async function persistIdentity(): Promise<void> {
+    // Empty string means "forgotten" — hydration treats falsy as absent.
+    await Promise.resolve(config.storage.set(USER_ID_KEY, userId ?? ""))
+    await Promise.resolve(config.storage.set(USERNAME_KEY, username ?? ""))
+    await Promise.resolve(config.storage.set(EMAIL_KEY, email ?? ""))
+  }
 
   async function commonContext(): Promise<GrowthEventProperties> {
     const ctx: GrowthEventProperties = {}
@@ -79,22 +134,8 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   }
 
   async function getAnonymousId(): Promise<string> {
-    if (anonymousIdInFlight) return anonymousIdInFlight
-    anonymousIdInFlight = (async () => {
-      const existing = await Promise.resolve(config.storage.get(ANON_KEY))
-      if (existing) return existing
-      const fresh = config.generateId()
-      await Promise.resolve(config.storage.set(ANON_KEY, fresh))
-      return fresh
-    })()
-    try {
-      return await anonymousIdInFlight
-    } finally {
-      // Clear only after the read completes — failed reads (e.g., storage
-      // quota) should not poison the cache, but successful ones don't need
-      // to hold the promise indefinitely since storage is now warm.
-      anonymousIdInFlight = null
-    }
+    await ensureIdentity()
+    return anonymousId as string
   }
 
   async function post(path: string, body: Record<string, unknown>): Promise<IngestResponse> {
@@ -134,21 +175,33 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   }
 
   async function identify(userIdOrArgs?: string | IdentifyArgs | null, traits?: GrowthEventProperties): Promise<IngestResponse> {
+    await ensureIdentity()
     const args: IdentifyArgs =
       typeof userIdOrArgs === "string" || userIdOrArgs === null
         ? { userId: userIdOrArgs, traits: traits ?? {} }
         : { ...(userIdOrArgs ?? {}) }
     if (args.userId !== undefined) userId = args.userId
-    const anonymousId = await getAnonymousId()
+    if (args.username !== undefined) username = normalizeIdentityField(args.username)
+    if (args.email !== undefined) email = normalizeIdentityField(args.email)
+    await persistIdentity()
     const enrichedTraits: GrowthEventProperties = {
       ...(args.traits ?? {}),
       _ctx: await commonContext(),
     }
+    // Snapshot identity + anon as plain synchronous reads (no await between) so a
+    // concurrent reset() can't tear them (see track()).
+    await ensureIdentity()
+    const snapAnon = anonymousId as string
+    const snapUserId = userId
+    const snapUsername = username
+    const snapEmail = email
     const body = {
       app: config.app,
       environment: config.environment,
-      userId,
-      anonymousId,
+      userId: snapUserId,
+      anonymousId: snapAnon,
+      username: snapUsername,
+      email: snapEmail,
       platform: config.platform,
       appVersion: args.appVersion ?? null,
       buildNumber: args.buildNumber ?? null,
@@ -160,7 +213,7 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     if (config.debug) {
       config.debugSink.record({
         kind: "identify",
-        label: userId ?? "<anonymous>",
+        label: snapUserId ?? snapUsername ?? snapEmail ?? "<anonymous>",
         properties: enrichedTraits,
         occurredAt: config.now(),
       })
@@ -168,21 +221,45 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     // Notify bridges BEFORE the network call. Third-party SDKs (Clarity,
     // PostHog, Sentry, Statsig) keep their own queues; if our ingest fails we
     // still want them to see the identify so cross-tool sessions stay joinable.
-    notifyBridges((b) => b.onIdentify?.({ userId, anonymousId, traits: args.traits ?? {} }))
+    notifyBridges((b) => b.onIdentify?.({ userId: snapUserId, anonymousId: snapAnon, username: snapUsername, email: snapEmail, traits: args.traits ?? {} }))
     return post("/api/v1/growth/users", body)
   }
 
+  async function reset(): Promise<void> {
+    // Rotate the anon id and clear identity as one synchronous block (no await
+    // between the in-memory writes). A concurrent track()/identify() snapshot is
+    // likewise await-free, so on this single-threaded runtime it observes either
+    // the full pre-reset state or the full post-reset state — never a torn pair
+    // (cleared user + old anon) that would re-stitch a logout event to the prior
+    // user. identityHydrated stays true so a stale in-flight ensureIdentity()
+    // (see its guard) can't resurrect the prior user. Persistence follows.
+    anonymousId = config.generateId()
+    userId = null
+    username = null
+    email = null
+    identityHydrated = true
+    await persistIdentity()
+    await Promise.resolve(config.storage.set(ANON_KEY, anonymousId))
+    notifyBridges((b) => b.onReset?.())
+  }
+
   async function track(eventName: string, properties?: GrowthEventProperties, trackArgs?: TrackArgs): Promise<IngestResponse> {
-    const anonymousId = await getAnonymousId()
+    await ensureIdentity()
     const enrichedProperties: GrowthEventProperties = {
       ...(properties ?? {}),
       _ctx: await commonContext(),
     }
+    // Snapshot anon id + userId with NO await between the two reads, so a
+    // concurrent reset() can't tear identity (rotate a new anon while leaving the
+    // old userId, or vice-versa). The anon id is an in-memory cache, so this is a
+    // plain synchronous read; single-threaded JS has no interleaving here.
+    const snapAnon = anonymousId as string
+    const currentUserId = userId
     const body = {
       app: config.app,
       environment: config.environment,
-      userId,
-      anonymousId,
+      userId: currentUserId,
+      anonymousId: snapAnon,
       eventName,
       platform: config.platform,
       source: trackArgs?.source ?? "native",
@@ -203,7 +280,7 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     }
     // See identify() — bridges fire before the network post so third-party SDK
     // queues survive ingest outages.
-    notifyBridges((b) => b.onTrack?.({ eventName, properties: properties ?? {}, userId, anonymousId }))
+    notifyBridges((b) => b.onTrack?.({ eventName, properties: properties ?? {}, userId: currentUserId, anonymousId: snapAnon }))
     return post("/api/v1/growth/events", body)
   }
 
@@ -261,6 +338,10 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     return config.clickIdStore.captureFromQuery(params)
   }
 
+  // Warm the persisted identity in the background so getUserId() is accurate
+  // shortly after construction without forcing every caller to await.
+  void ensureIdentity()
+
   return {
     identify,
     track,
@@ -269,13 +350,21 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     trackPurchaseCompleted,
     submitWebReferrer,
     addBridge,
-    setUserId(id) { userId = id },
+    setUserId(id) { userId = id; identityHydrated = true; void persistIdentity() },
     getUserId() { return userId },
     getAnonymousId,
+    reset,
     recordClickId,
     captureClickIds,
     _config() { return config },
   }
+}
+
+/** Trim an identity field; collapse empty / whitespace-only input to null. */
+function normalizeIdentityField(value: string | null | undefined): string | null {
+  if (value == null) return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function defaultLocale(): string | null {

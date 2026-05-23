@@ -25,6 +25,12 @@ export interface IngestUserResponseUser {
      * @memberof IngestUserResponseUser
      */
     identityHash: string;
+    /**
+     * Resolved stable principal (userId, else anonymousId, else deviceId) used for attribution.
+     * @type {string}
+     * @memberof IngestUserResponseUser
+     */
+    principalId?: string;
 }
 
 /**
@@ -46,6 +52,7 @@ export function IngestUserResponseUserFromJSONTyped(json: any, ignoreDiscriminat
     return {
         
         'identityHash': json['identityHash'],
+        'principalId': json['principalId'] == null ? undefined : json['principalId'],
     };
 }
 
@@ -61,6 +68,7 @@ export function IngestUserResponseUserToJSONTyped(value?: IngestUserResponseUser
     return {
         
         'identityHash': value['identityHash'],
+        'principalId': value['principalId'],
     };
 }
 

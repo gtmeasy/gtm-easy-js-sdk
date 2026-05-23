@@ -86,6 +86,36 @@ const analytics = createGrowthAnalytics({
 await analytics.track("subscription.renewed", { planId: "pro" }, { metricValue: 19.99, metricLabel: "USD" })
 ```
 
+## Identifying users
+
+`identify` attaches a stable **user id** plus optional **username** and **email** to
+the current anonymous stream. All three are first-class (not smuggled in `traits`),
+persisted to durable storage, and reused automatically on later `track` calls — so a
+purchase that happens after an app reload still attributes to the signed-in user. On
+the server these power the People dashboard and feed hashed ad-platform match keys
+(email is hashed only at ad-platform egress; plaintext at rest).
+
+```ts
+// Object form — the ergonomic path for username + email.
+await analytics.identify({
+  userId: "user_123",
+  username: "john_wayne",
+  email: "john@example.com",
+  traits: { plan: "pro" },
+})
+
+// String form still works for id-only identify.
+await analytics.identify("user_123", { plan: "pro" })
+```
+
+Pass only the fields you have; omit a field to leave it unchanged. On logout, call
+`reset()` to forget the identity and rotate the anonymous id so subsequent events
+start a fresh anonymous stream instead of re-stitching onto the previous user:
+
+```ts
+await analytics.reset()
+```
+
 ## Bridges — one user, all your tools
 
 Bridges mirror identify + track into third-party SDKs that the host app already

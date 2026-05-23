@@ -81,11 +81,15 @@ await analytics.captureClickIds(window.location.href)
 ## 5. Identify + track
 
 ```ts
-await analytics.identify("user_123", { plan: "pro", email: "u@x.com" })
+// username + email are first-class — pass them at the top level, not in traits.
+await analytics.identify({ userId: "user_123", username: "john_wayne", email: "u@x.com", traits: { plan: "pro" } })
 await analytics.track("feature.used", { feature: "export" })
+
+// On logout: forget the identity and rotate the anonymous id.
+await analytics.reset()
 ```
 
-Email/phone in traits are SHA-256 hashed server-side for Enhanced Matching — never hash on the client.
+`username` + `email` persist durably and reattach to every later `track`. Email is SHA-256 hashed server-side for Enhanced Matching — never hash on the client. (Email/phone in `traits` are still hashed too, for back-compat.)
 
 ## 6. Paywall funnel — use the typed helpers
 

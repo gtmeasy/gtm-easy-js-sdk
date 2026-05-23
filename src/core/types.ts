@@ -74,6 +74,10 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: s
 
 export interface IdentifyArgs {
   userId?: string | null
+  /** Human-readable display name / handle. First-class, not smuggled in traits. */
+  username?: string | null
+  /** User email. First-class; sent plaintext, hashed only at ad-platform egress. */
+  email?: string | null
   traits?: GrowthEventProperties
   appVersion?: string | null
   buildNumber?: string | null
@@ -99,13 +103,21 @@ export interface IngestResponse {
 
 export interface GrowthBridge {
   readonly name: string
-  onIdentify?(payload: { userId: string | null; anonymousId: string; traits: GrowthEventProperties }): void | Promise<void>
+  onIdentify?(payload: {
+    userId: string | null
+    anonymousId: string
+    username: string | null
+    email: string | null
+    traits: GrowthEventProperties
+  }): void | Promise<void>
   onTrack?(payload: {
     eventName: string
     properties: GrowthEventProperties
     userId: string | null
     anonymousId: string
   }): void | Promise<void>
+  /** Called on logout/reset so third-party SDKs can clear their own identity. */
+  onReset?(): void | Promise<void>
 }
 
 export interface GrowthAnalytics {
@@ -121,6 +133,12 @@ export interface GrowthAnalytics {
   setUserId(userId: string | null): void
   getUserId(): string | null
   getAnonymousId(): Promise<string>
+  /**
+   * Clear the identified user (logout). Forgets the persisted userId/username/
+   * email, rotates the anonymous id so post-logout events don't attribute to
+   * the previous user, and notifies bridges to reset their own identity.
+   */
+  reset(): Promise<void>
   /** Record a click id captured externally (e.g. from a deep-link handler). */
   recordClickId(provider: string, value: string): Promise<void>
   /** Capture all known click ids from a URL or query string. Returns count captured. */

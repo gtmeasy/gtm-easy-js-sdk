@@ -56,6 +56,18 @@ export interface IdentifyUserRequest {
      */
     deviceId?: string | null;
     /**
+     * Human-readable display name / handle. Plaintext at rest.
+     * @type {string}
+     * @memberof IdentifyUserRequest
+     */
+    username?: string | null;
+    /**
+     * User email. Plaintext at rest; SHA-256 hashed only at ad-platform egress.
+     * @type {string}
+     * @memberof IdentifyUserRequest
+     */
+    email?: string | null;
+    /**
      * 
      * @type {string}
      * @memberof IdentifyUserRequest
@@ -141,6 +153,8 @@ export function IdentifyUserRequestFromJSONTyped(json: any, ignoreDiscriminator:
         'userId': json['userId'] == null ? undefined : json['userId'],
         'anonymousId': json['anonymousId'] == null ? undefined : json['anonymousId'],
         'deviceId': json['deviceId'] == null ? undefined : json['deviceId'],
+        'username': json['username'] == null ? undefined : json['username'],
+        'email': json['email'] == null ? undefined : json['email'],
         'appVersion': json['appVersion'] == null ? undefined : json['appVersion'],
         'buildNumber': json['buildNumber'] == null ? undefined : json['buildNumber'],
         'country': json['country'] == null ? undefined : json['country'],
@@ -167,6 +181,8 @@ export function IdentifyUserRequestToJSONTyped(value?: IdentifyUserRequest | nul
         'userId': value['userId'],
         'anonymousId': value['anonymousId'],
         'deviceId': value['deviceId'],
+        'username': value['username'],
+        'email': value['email'],
         'appVersion': value['appVersion'],
         'buildNumber': value['buildNumber'],
         'country': value['country'],

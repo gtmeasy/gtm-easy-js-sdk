@@ -7,6 +7,7 @@
 Name | Type
 ------------ | -------------
 `identityHash` | string
+`principalId` | string
 
 ## Example
 
@@ -16,6 +17,7 @@ import type { IngestUserResponseUser } from '@gtmeasy/growth-api'
 // TODO: Update the object below with actual values
 const example = {
   "identityHash": null,
+  "principalId": null,
 } satisfies IngestUserResponseUser
 
 console.log(example)

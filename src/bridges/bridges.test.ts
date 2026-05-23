@@ -97,6 +97,47 @@ describe("installStatsigBridge", () => {
   })
 })
 
+describe("first-class email and username", () => {
+  it("PostHog receives email + name and resets", async () => {
+    const posthog: PostHogLike = { identify: vi.fn(), capture: vi.fn(), reset: vi.fn() }
+    const analytics = makeAnalytics()
+    installPostHogBridge(analytics, posthog)
+    await analytics.identify({ userId: "u1", username: "John", email: "john@example.com", traits: { plan: "pro" } })
+    expect(posthog.identify).toHaveBeenCalledWith("u1", { plan: "pro", email: "john@example.com", name: "John" })
+    await analytics.reset()
+    expect(posthog.reset).toHaveBeenCalled()
+  })
+
+  it("Sentry receives username + email and clears on reset", async () => {
+    const sentry: SentryLike = { setUser: vi.fn(), addBreadcrumb: vi.fn() }
+    const analytics = makeAnalytics()
+    installSentryBridge(analytics, sentry)
+    await analytics.identify({ userId: "u1", username: "John", email: "john@example.com" })
+    expect(sentry.setUser).toHaveBeenCalledWith({ id: "u1", username: "John", email: "john@example.com" })
+    await analytics.reset()
+    expect(sentry.setUser).toHaveBeenLastCalledWith(null)
+  })
+
+  it("Statsig nests username under custom and sends email", async () => {
+    const statsig: StatsigLike = { updateUser: vi.fn().mockResolvedValue(undefined), logEvent: vi.fn() }
+    const analytics = makeAnalytics()
+    installStatsigBridge(analytics, statsig)
+    await analytics.identify({ userId: "u1", username: "John", email: "john@example.com", traits: { plan: "pro" } })
+    expect(statsig.updateUser).toHaveBeenCalledWith({ userID: "u1", email: "john@example.com", custom: { plan: "pro", username: "John" } })
+  })
+
+  it("Clarity sets email and username and uses a friendly name", async () => {
+    const calls: Array<unknown[]> = []
+    const clarity = ((...args: unknown[]) => calls.push(args)) as unknown as ClarityLike
+    const analytics = makeAnalytics()
+    installClarityBridge(analytics, clarity)
+    await analytics.identify({ userId: "u1", username: "John", email: "john@example.com" })
+    expect(calls[0]).toEqual(["identify", "u1", undefined, undefined, "John"])
+    expect(calls).toContainEqual(["set", "email", "john@example.com"])
+    expect(calls).toContainEqual(["set", "username", "John"])
+  })
+})
+
 describe("bridge resilience", () => {
   it("does not throw when third-party SDK throws", async () => {
     const broken: ClarityLike = ((..._args: unknown[]) => { throw new Error("kaboom") }) as unknown as ClarityLike

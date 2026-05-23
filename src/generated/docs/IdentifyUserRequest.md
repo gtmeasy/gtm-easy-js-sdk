@@ -12,6 +12,8 @@ Name | Type
 `userId` | string
 `anonymousId` | string
 `deviceId` | string
+`username` | string
+`email` | string
 `appVersion` | string
 `buildNumber` | string
 `country` | string
@@ -32,6 +34,8 @@ const example = {
   "userId": null,
   "anonymousId": null,
   "deviceId": null,
+  "username": john_wayne,
+  "email": john@example.com,
   "appVersion": null,
   "buildNumber": null,
   "country": null,
