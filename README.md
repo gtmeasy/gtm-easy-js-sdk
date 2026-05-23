@@ -4,6 +4,12 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.3.0)
+
+- **First-class identity**: `identify(userId, { username, email, traits })` now accepts optional `username` and `email` as top-level fields (not smuggled inside `traits`), persisted and reused on every later `track`.
+- **Logout-safe reset**: identity is hydrated once and cached in memory; `track`/`identify` snapshot the anonymous id synchronously, so a concurrent `reset()` can no longer tear the anon id. `reset()` rotates the anon id and clears identity atomically.
+- **Identity-aware bridges**: Clarity (friendly name + email/username tags), PostHog (`$set` email/name, reset on logout), Sentry (`setUser` username/email, cleared on logout), and Statsig (`custom.username/email`, cleared on logout) now follow identity automatically.
+
 ## What's new (v0.2.0)
 
 - **Click ID store**: `GrowthClickIdStore` persists `fbc/fbp/fbclid/gclid/wbraid/gbraid/ttclid/igshid/msclkid/twclid` with 90-day TTL. `analytics.captureClickIds(url)` walks deep links + landing-page query strings.
