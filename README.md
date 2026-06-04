@@ -4,6 +4,10 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.5.0)
+
+- **Version alignment**: the GTM Easy SDKs (TypeScript / Swift / Kotlin) are now unified at **0.5.0** — no API changes since 0.4.x, so onboarding surveys + extensible survey metadata ship at the same version on every platform.
+
 ## What's new (v0.4.0)
 
 - **Onboarding surveys**: `analytics.submitSurvey({ surveyId, responses })` captures flexible, self-describing survey answers (single/multi choice, rating, NPS, scale, boolean, free text) with no length truncation. Build answers with the `surveyAnswer.*` helpers. `trackSurveyShown` / `trackSurveyStarted` power the shown→completed funnel on the dashboard. The SDK mints the idempotency key on-device so transparent retries dedup, and attaches device/click common context under `properties._ctx`.

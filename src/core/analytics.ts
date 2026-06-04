@@ -18,7 +18,7 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.4.0"
+export const GROWTH_JS_SDK_VERSION = "0.5.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
