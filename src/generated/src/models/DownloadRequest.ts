@@ -16,167 +16,172 @@ import { mapValues } from '../runtime';
 /**
  * 
  * @export
- * @interface AppleAttributionRequest
+ * @interface DownloadRequest
  */
-export interface AppleAttributionRequest {
+export interface DownloadRequest {
+    /**
+     * Optional; the server derives the app from the write key when omitted.
+     * @type {string}
+     * @memberof DownloadRequest
+     */
+    app?: string;
+    /**
+     * 
+     * @type {DownloadRequestEnvironmentEnum}
+     * @memberof DownloadRequest
+     */
+    environment?: DownloadRequestEnvironmentEnum;
+    /**
+     * Defaults to the registered app's platform when omitted.
+     * @type {DownloadRequestPlatformEnum}
+     * @memberof DownloadRequest
+     */
+    platform?: DownloadRequestPlatformEnum;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
-     */
-    app: string;
-    /**
-     * 
-     * @type {AppleAttributionRequestEnvironmentEnum}
-     * @memberof AppleAttributionRequest
-     */
-    environment?: AppleAttributionRequestEnvironmentEnum;
-    /**
-     * 
-     * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     userId?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     anonymousId?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     deviceId?: string | null;
     /**
-     * Originating platform.
-     * @type {AppleAttributionRequestPlatformEnum}
-     * @memberof AppleAttributionRequest
-     */
-    platform?: AppleAttributionRequestPlatformEnum;
-    /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     appVersion?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     buildNumber?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     source?: string;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     country?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     locale?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
     timezone?: string | null;
     /**
      * 
-     * @type {Date}
-     * @memberof AppleAttributionRequest
+     * @type {string}
+     * @memberof DownloadRequest
      */
-    occurredAt?: Date;
-    /**
-     * Free-form structured properties. Reserved keys: `_ctx` for SDK common context.
-     * @type {{ [key: string]: any; }}
-     * @memberof AppleAttributionRequest
-     */
-    properties?: { [key: string]: any; };
+    attributionProvider?: string | null;
     /**
      * 
      * @type {string}
-     * @memberof AppleAttributionRequest
+     * @memberof DownloadRequest
      */
-    appleAttributionToken: string;
+    attributionId?: string | null;
+    /**
+     * 
+     * @type {Date}
+     * @memberof DownloadRequest
+     */
+    occurredAt?: Date;
+    /**
+     * Download metadata, e.g. { channel, fileSize, downloadUrl }.
+     * @type {{ [key: string]: any; }}
+     * @memberof DownloadRequest
+     */
+    properties?: { [key: string]: any; };
 }
 
 
 /**
  * @export
  */
-export const AppleAttributionRequestEnvironmentEnum = {
+export const DownloadRequestEnvironmentEnum = {
     Production: 'production',
     Staging: 'staging',
     Development: 'development'
 } as const;
-export type AppleAttributionRequestEnvironmentEnum = typeof AppleAttributionRequestEnvironmentEnum[keyof typeof AppleAttributionRequestEnvironmentEnum];
+export type DownloadRequestEnvironmentEnum = typeof DownloadRequestEnvironmentEnum[keyof typeof DownloadRequestEnvironmentEnum];
 
 /**
  * @export
  */
-export const AppleAttributionRequestPlatformEnum = {
+export const DownloadRequestPlatformEnum = {
     Ios: 'ios',
     Android: 'android',
     Web: 'web',
     Macos: 'macos',
     Server: 'server'
 } as const;
-export type AppleAttributionRequestPlatformEnum = typeof AppleAttributionRequestPlatformEnum[keyof typeof AppleAttributionRequestPlatformEnum];
+export type DownloadRequestPlatformEnum = typeof DownloadRequestPlatformEnum[keyof typeof DownloadRequestPlatformEnum];
 
 
 /**
- * Check if a given object implements the AppleAttributionRequest interface.
+ * Check if a given object implements the DownloadRequest interface.
  */
-export function instanceOfAppleAttributionRequest(value: object): value is AppleAttributionRequest {
-    if (!('app' in value) || value['app'] === undefined) return false;
-    if (!('appleAttributionToken' in value) || value['appleAttributionToken'] === undefined) return false;
+export function instanceOfDownloadRequest(value: object): value is DownloadRequest {
     return true;
 }
 
-export function AppleAttributionRequestFromJSON(json: any): AppleAttributionRequest {
-    return AppleAttributionRequestFromJSONTyped(json, false);
+export function DownloadRequestFromJSON(json: any): DownloadRequest {
+    return DownloadRequestFromJSONTyped(json, false);
 }
 
-export function AppleAttributionRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): AppleAttributionRequest {
+export function DownloadRequestFromJSONTyped(json: any, ignoreDiscriminator: boolean): DownloadRequest {
     if (json == null) {
         return json;
     }
     return {
         
-        'app': json['app'],
+        'app': json['app'] == null ? undefined : json['app'],
         'environment': json['environment'] == null ? undefined : json['environment'],
+        'platform': json['platform'] == null ? undefined : json['platform'],
         'userId': json['userId'] == null ? undefined : json['userId'],
         'anonymousId': json['anonymousId'] == null ? undefined : json['anonymousId'],
         'deviceId': json['deviceId'] == null ? undefined : json['deviceId'],
-        'platform': json['platform'] == null ? undefined : json['platform'],
         'appVersion': json['appVersion'] == null ? undefined : json['appVersion'],
         'buildNumber': json['buildNumber'] == null ? undefined : json['buildNumber'],
         'source': json['source'] == null ? undefined : json['source'],
         'country': json['country'] == null ? undefined : json['country'],
         'locale': json['locale'] == null ? undefined : json['locale'],
         'timezone': json['timezone'] == null ? undefined : json['timezone'],
+        'attributionProvider': json['attributionProvider'] == null ? undefined : json['attributionProvider'],
+        'attributionId': json['attributionId'] == null ? undefined : json['attributionId'],
         'occurredAt': json['occurredAt'] == null ? undefined : (new Date(json['occurredAt'])),
         'properties': json['properties'] == null ? undefined : json['properties'],
-        'appleAttributionToken': json['appleAttributionToken'],
     };
 }
 
-export function AppleAttributionRequestToJSON(json: any): AppleAttributionRequest {
-    return AppleAttributionRequestToJSONTyped(json, false);
+export function DownloadRequestToJSON(json: any): DownloadRequest {
+    return DownloadRequestToJSONTyped(json, false);
 }
 
-export function AppleAttributionRequestToJSONTyped(value?: AppleAttributionRequest | null, ignoreDiscriminator: boolean = false): any {
+export function DownloadRequestToJSONTyped(value?: DownloadRequest | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -185,19 +190,20 @@ export function AppleAttributionRequestToJSONTyped(value?: AppleAttributionReque
         
         'app': value['app'],
         'environment': value['environment'],
+        'platform': value['platform'],
         'userId': value['userId'],
         'anonymousId': value['anonymousId'],
         'deviceId': value['deviceId'],
-        'platform': value['platform'],
         'appVersion': value['appVersion'],
         'buildNumber': value['buildNumber'],
         'source': value['source'],
         'country': value['country'],
         'locale': value['locale'],
         'timezone': value['timezone'],
+        'attributionProvider': value['attributionProvider'],
+        'attributionId': value['attributionId'],
         'occurredAt': value['occurredAt'] == null ? value['occurredAt'] : value['occurredAt'].toISOString(),
         'properties': value['properties'],
-        'appleAttributionToken': value['appleAttributionToken'],
     };
 }
 

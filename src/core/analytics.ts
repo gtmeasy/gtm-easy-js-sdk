@@ -12,11 +12,13 @@ import {
   type GrowthEventProperties,
   type IdentifyArgs,
   type IngestResponse,
+  type SubmitSurveyArgs,
+  type SurveySubmitResponse,
   type TrackArgs,
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.3.0"
+export const GROWTH_JS_SDK_VERSION = "0.4.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
@@ -138,7 +140,7 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     return anonymousId as string
   }
 
-  async function post(path: string, body: Record<string, unknown>): Promise<IngestResponse> {
+  async function postRaw(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       "x-gtm-growth-key": config.writeKey,
@@ -154,8 +156,16 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     if (response.status < 200 || response.status >= 300) {
       throw new GrowthAnalyticsError(response.status, response.body)
     }
-    let parsed: { event?: { id?: string; eventName?: string }; warnings?: string[] } = {}
-    try { parsed = JSON.parse(response.body) } catch { parsed = {} }
+    try {
+      const parsed: unknown = JSON.parse(response.body)
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  async function post(path: string, body: Record<string, unknown>): Promise<IngestResponse> {
+    const parsed = (await postRaw(path, body)) as { event?: { id?: string; eventName?: string }; warnings?: string[] }
     return {
       eventId: parsed.event?.id ?? null,
       eventName: parsed.event?.eventName ?? null,
@@ -312,6 +322,61 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     })
   }
 
+  async function submitSurvey(args: SubmitSurveyArgs): Promise<SurveySubmitResponse> {
+    await ensureIdentity()
+    // Snapshot identity await-free so a concurrent reset() can't tear it (see track()).
+    const snapAnon = anonymousId as string
+    const currentUserId = userId
+    // Generate the idempotency key CLIENT-side when the caller omits it: a
+    // transparent retry (network blip, app relaunch with a queued submission)
+    // then reuses the SAME key so the server's ReplacingMergeTree dedups it,
+    // instead of the server minting a fresh UUID per attempt and double-counting.
+    const submissionId = args.submissionId ?? config.generateId()
+    const enrichedProperties: GrowthEventProperties = {
+      ...(args.properties ?? {}),
+      _ctx: await commonContext(),
+    }
+    const body = {
+      app: config.app,
+      environment: config.environment,
+      userId: currentUserId,
+      anonymousId: snapAnon,
+      platform: config.platform,
+      surveyId: args.surveyId,
+      surveyName: args.surveyName ?? null,
+      surveyVersion: args.surveyVersion ?? null,
+      submissionId,
+      status: args.status ?? "completed",
+      appVersion: args.appVersion ?? null,
+      locale: args.locale ?? defaultLocale(),
+      country: args.country ?? null,
+      occurredAt: args.occurredAt ?? config.now(),
+      responses: args.responses,
+      properties: enrichedProperties,
+      // Submission-level extensibility payload echoed onto every answer row.
+      // Per-answer `metadata` (on each response) is merged OVER this server-side.
+      metadata: args.metadata ?? {},
+    }
+    if (config.debug) {
+      config.debugSink.record({
+        kind: "track",
+        label: `survey:${args.surveyId}`,
+        properties: { status: body.status, responses: args.responses.length },
+        occurredAt: body.occurredAt as string,
+      })
+    }
+    const parsed = (await postRaw("/api/v1/growth/surveys", body)) as {
+      submissionId?: string
+      accepted?: number
+      warnings?: string[]
+    }
+    return {
+      submissionId: parsed.submissionId ?? submissionId,
+      accepted: parsed.accepted ?? 0,
+      warnings: parsed.warnings ?? [],
+    }
+  }
+
   function addBridge(bridge: GrowthBridge): () => void {
     bridges.add(bridge)
     return () => { bridges.delete(bridge) }
@@ -349,6 +414,7 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     trackAppOpen,
     trackPurchaseCompleted,
     submitWebReferrer,
+    submitSurvey,
     addBridge,
     setUserId(id) { userId = id; identityHydrated = true; void persistIdentity() },
     getUserId() { return userId },

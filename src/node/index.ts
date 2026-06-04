@@ -17,3 +17,9 @@ export function createGrowthAnalytics(config: NodeGrowthAnalyticsConfiguration):
     storage: config.storage ?? new MemoryStorage(),
   })
 }
+
+// Survey capture is runtime-neutral — re-export the helpers + types so a server
+// consumer imports them from this one subpath (the skills forbid bare-root imports).
+export { surveyAnswer, trackSurveyShown, trackSurveyStarted } from "../core/survey-events"
+export type { SurveyLifecycleArgs } from "../core/survey-events"
+export type { SurveyAnswer, SubmitSurveyArgs, SurveySubmitResponse, SurveyResponseStatus } from "../core/types"

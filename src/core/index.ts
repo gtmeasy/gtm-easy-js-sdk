@@ -19,6 +19,12 @@ export {
   type PaywallUpgradeCancelledArgs,
 } from "./paywall-events"
 export {
+  surveyAnswer,
+  trackSurveyShown,
+  trackSurveyStarted,
+  type SurveyLifecycleArgs,
+} from "./survey-events"
+export {
   GrowthAnalyticsError,
   GROWTH_DEFAULT_ENDPOINT,
   type GrowthAnalytics,
@@ -34,5 +40,9 @@ export {
   type IdentifyArgs,
   type IngestResponse,
   type JsonValue,
+  type SubmitSurveyArgs,
+  type SurveyAnswer,
+  type SurveyResponseStatus,
+  type SurveySubmitResponse,
   type TrackArgs,
 } from "./types"

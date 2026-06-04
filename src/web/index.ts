@@ -4,6 +4,12 @@ import { webDeviceContextProvider } from "../core/device-context"
 import { WebStorage } from "../core/storage"
 import type { GrowthAnalytics, GrowthAnalyticsConfiguration } from "../core/types"
 
+// Survey capture is runtime-neutral — re-export the helpers + types so a web
+// consumer imports them from this one subpath (the skills forbid bare-root imports).
+export { surveyAnswer, trackSurveyShown, trackSurveyStarted } from "../core/survey-events"
+export type { SurveyLifecycleArgs } from "../core/survey-events"
+export type { SurveyAnswer, SubmitSurveyArgs, SurveySubmitResponse, SurveyResponseStatus } from "../core/types"
+
 export type WebGrowthAnalyticsConfiguration = Omit<GrowthAnalyticsConfiguration, "platform" | "storage"> & {
   platform?: GrowthAnalyticsConfiguration["platform"]
   storage?: GrowthAnalyticsConfiguration["storage"]

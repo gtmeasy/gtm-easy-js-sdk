@@ -4,6 +4,10 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.4.0)
+
+- **Onboarding surveys**: `analytics.submitSurvey({ surveyId, responses })` captures flexible, self-describing survey answers (single/multi choice, rating, NPS, scale, boolean, free text) with no length truncation. Build answers with the `surveyAnswer.*` helpers. `trackSurveyShown` / `trackSurveyStarted` power the shown→completed funnel on the dashboard. The SDK mints the idempotency key on-device so transparent retries dedup, and attaches device/click common context under `properties._ctx`.
+
 ## What's new (v0.3.0)
 
 - **First-class identity**: `identify(userId, { username, email, traits })` now accepts optional `username` and `email` as top-level fields (not smuggled inside `traits`), persisted and reused on every later `track`.
@@ -120,6 +124,62 @@ start a fresh anonymous stream instead of re-stitching onto the previous user:
 
 ```ts
 await analytics.reset()
+```
+
+## Onboarding surveys
+
+Capture flexible onboarding-survey answers. Each answer is self-describing (it
+carries its question type + optional human label), so the GTM Easy dashboard
+aggregates choice breakdowns, rating histograms, NPS, and free-text samples
+without any server-side survey definition. Answers are stored verbatim (no
+240-char truncation) in a dedicated survey store.
+
+```ts
+import { surveyAnswer, trackSurveyShown } from "@gtmeasy/growth/web"
+
+// Optional: mark shown so the dashboard can compute a shown → completed rate.
+await trackSurveyShown(analytics, { surveyId: "onboarding_v1", surveyName: "Onboarding" })
+
+const ack = await analytics.submitSurvey({
+  surveyId: "onboarding_v1",
+  surveyName: "Onboarding",
+  surveyVersion: "2",
+  responses: [
+    surveyAnswer.singleChoice("source", "tiktok", { label: "TikTok", questionText: "Where did you hear about us?" }),
+    surveyAnswer.multiChoice("goals", ["focus", "limits"], { labels: ["Stay focused", "Set limits"] }),
+    surveyAnswer.nps("recommend", 9),
+    surveyAnswer.rating("first_impression", 5),
+    surveyAnswer.text("anything_else", "Loving it so far"),
+  ],
+})
+console.log(ack.submissionId, ack.accepted) // idempotency key + rows persisted
+```
+
+Pass `status: "partial"` to store answers without completing the survey (no
+completion event fires), or `status: "dismissed"` when the user closes it. The
+SDK generates a `submissionId` on the client when you omit one, so a transparent
+retry reuses the **same** key and the server dedups it; supply your own to make
+app-level retries idempotent. A completed or dismissed submission also records a
+`survey.completed` / `survey.dismissed` lifecycle event (carrying device/click
+context under `_ctx`) for the user-journey timeline and connector fan-out.
+
+### Extensible metadata
+
+Attach free-form `metadata` to a submission (echoed onto every answer row) or to
+an individual answer (merged **over** the submission-level payload). It is stored
+in a dedicated JSON column and read with `JSONExtract` on demand — so you can add
+A/B variants, answer timings, locale overrides, or any future field **without a
+schema migration**.
+
+```ts
+await analytics.submitSurvey({
+  surveyId: "onboarding_v1",
+  metadata: { variant: "B", flow: "paywall_first" }, // on every row
+  responses: [
+    surveyAnswer.rating("first_impression", 5, { metadata: { ms_to_answer: 1200 } }),
+    surveyAnswer.text("anything_else", "Loving it"),
+  ],
+})
 ```
 
 ## Bridges — one user, all your tools

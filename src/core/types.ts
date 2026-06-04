@@ -101,6 +101,70 @@ export interface IngestResponse {
   warnings: string[]
 }
 
+export type SurveyResponseStatus = "completed" | "partial" | "dismissed"
+
+/**
+ * One answered survey question. Self-describing: `type` + optional `questionText`
+ * and `choiceLabels` let the dashboard aggregate without a server-side survey
+ * definition. Build these with the `surveyAnswer.*` helpers in `survey-events`.
+ */
+export interface SurveyAnswer {
+  questionId: string
+  /** single_choice | multi_choice | rating | scale | nps | boolean | text | link (unknown → text server-side). */
+  type: string
+  questionText?: string
+  position?: number
+  choices?: string[]
+  choiceLabels?: string[]
+  number?: number
+  text?: string
+  bool?: boolean
+  skipped?: boolean
+  /**
+   * Optional per-answer extensibility payload (answer timing, validation flags…).
+   * Merged OVER submission-level `metadata`; persisted to the `metadata` JSON
+   * column for JSONExtract-on-demand reads — nothing depends on a fixed shape.
+   */
+  metadata?: GrowthEventProperties
+}
+
+export interface SubmitSurveyArgs {
+  surveyId: string
+  responses: SurveyAnswer[]
+  surveyName?: string
+  surveyVersion?: string
+  /** Defaults to "completed". `partial` stores answers without a lifecycle event. */
+  status?: SurveyResponseStatus
+  /**
+   * Idempotency key for retries. The SDK generates a stable UUID when omitted
+   * (so a transparent retry reuses the SAME key and the server dedups it).
+   */
+  submissionId?: string
+  appVersion?: string
+  locale?: string
+  country?: string
+  occurredAt?: string
+  /**
+   * Extra structured properties merged into the lifecycle event. The SDK always
+   * adds device/click common context under `_ctx`; anything here is preserved.
+   */
+  properties?: GrowthEventProperties
+  /**
+   * Submission-level extensibility payload (A/B variant, locale overrides, UI
+   * context…). Echoed onto every answer row and persisted to the `metadata` JSON
+   * column. A per-answer `metadata` (on `SurveyAnswer`) is merged OVER this.
+   */
+  metadata?: GrowthEventProperties
+}
+
+export interface SurveySubmitResponse {
+  /** Idempotency key — the one you supplied or a server-generated UUID. */
+  submissionId: string
+  /** Number of answer rows persisted. */
+  accepted: number
+  warnings: string[]
+}
+
 export interface GrowthBridge {
   readonly name: string
   onIdentify?(payload: {
@@ -127,6 +191,14 @@ export interface GrowthAnalytics {
   trackAppOpen(): Promise<IngestResponse>
   trackPurchaseCompleted(args: { amount: number; currency: string; productId?: string }): Promise<IngestResponse>
   submitWebReferrer(referrer: string, click_id?: string | null): Promise<IngestResponse>
+  /**
+   * Submit a flexible onboarding-survey response. Answers persist to the
+   * dedicated survey store (no 240-char truncation) and a
+   * `survey.completed`/`survey.dismissed` lifecycle event is recorded
+   * (`partial` stores answers without one). Build `responses` with the
+   * `surveyAnswer.*` helpers.
+   */
+  submitSurvey(args: SubmitSurveyArgs): Promise<SurveySubmitResponse>
   /** Add a bridge that mirrors identify + track into a third-party SDK. */
   addBridge(bridge: GrowthBridge): () => void
   /** Force-set the userId without sending an identify event. */

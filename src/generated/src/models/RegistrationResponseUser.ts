@@ -16,36 +16,36 @@ import { mapValues } from '../runtime';
 /**
  * 
  * @export
- * @interface IngestUserResponseUser
+ * @interface RegistrationResponseUser
  */
-export interface IngestUserResponseUser {
+export interface RegistrationResponseUser {
     /**
      * 
      * @type {string}
-     * @memberof IngestUserResponseUser
+     * @memberof RegistrationResponseUser
      */
     identityHash: string;
     /**
-     * Resolved stable principal (userId, else anonymousId, else deviceId) used for attribution.
+     * 
      * @type {string}
-     * @memberof IngestUserResponseUser
+     * @memberof RegistrationResponseUser
      */
     principalId?: string;
 }
 
 /**
- * Check if a given object implements the IngestUserResponseUser interface.
+ * Check if a given object implements the RegistrationResponseUser interface.
  */
-export function instanceOfIngestUserResponseUser(value: object): value is IngestUserResponseUser {
+export function instanceOfRegistrationResponseUser(value: object): value is RegistrationResponseUser {
     if (!('identityHash' in value) || value['identityHash'] === undefined) return false;
     return true;
 }
 
-export function IngestUserResponseUserFromJSON(json: any): IngestUserResponseUser {
-    return IngestUserResponseUserFromJSONTyped(json, false);
+export function RegistrationResponseUserFromJSON(json: any): RegistrationResponseUser {
+    return RegistrationResponseUserFromJSONTyped(json, false);
 }
 
-export function IngestUserResponseUserFromJSONTyped(json: any, ignoreDiscriminator: boolean): IngestUserResponseUser {
+export function RegistrationResponseUserFromJSONTyped(json: any, ignoreDiscriminator: boolean): RegistrationResponseUser {
     if (json == null) {
         return json;
     }
@@ -56,11 +56,11 @@ export function IngestUserResponseUserFromJSONTyped(json: any, ignoreDiscriminat
     };
 }
 
-export function IngestUserResponseUserToJSON(json: any): IngestUserResponseUser {
-    return IngestUserResponseUserToJSONTyped(json, false);
+export function RegistrationResponseUserToJSON(json: any): RegistrationResponseUser {
+    return RegistrationResponseUserToJSONTyped(json, false);
 }
 
-export function IngestUserResponseUserToJSONTyped(value?: IngestUserResponseUser | null, ignoreDiscriminator: boolean = false): any {
+export function RegistrationResponseUserToJSONTyped(value?: RegistrationResponseUser | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

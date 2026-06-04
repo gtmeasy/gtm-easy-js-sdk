@@ -148,7 +148,34 @@ installStatsigBridge(analytics, Statsig)
 
 Every bridge wraps third-party calls in try/catch — a misconfigured connector never breaks the event pipeline.
 
-## 9. Things to NOT do
+## 9. Onboarding surveys
+
+Capture flexible onboarding answers — choice breakdowns, rating histograms, NPS, and free-text samples aggregate on the dashboard with no server-side survey definition. Mark the survey shown first (optional, drives the shown→completed rate), then submit answers built with the `surveyAnswer.*` helpers:
+
+```ts
+import { surveyAnswer, trackSurveyShown } from "@gtmeasy/growth/web"
+
+await trackSurveyShown(analytics, { surveyId: "onboarding_v1", surveyName: "Onboarding" })
+
+const ack = await analytics.submitSurvey({
+  surveyId: "onboarding_v1",
+  surveyName: "Onboarding",
+  surveyVersion: "2",
+  responses: [
+    surveyAnswer.singleChoice("source", "tiktok", { label: "TikTok", questionText: "Where did you hear about us?" }),
+    surveyAnswer.multiChoice("goals", ["focus", "limits"], { labels: ["Stay focused", "Set limits"] }),
+    surveyAnswer.nps("recommend", 9),
+    surveyAnswer.rating("first_impression", 5),
+    surveyAnswer.text("anything_else", "Loving it so far"),
+  ],
+})
+```
+
+Pass `status: "partial"` to store answers without firing a completion event, or `status: "dismissed"` when the user closes it. The SDK mints the `submissionId` on the client so a transparent retry reuses the same key (server dedups); pass your own to make app-level retries idempotent. Don't truncate free text — the survey store accepts up to 2 000 chars per answer.
+
+Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metadata: { variant: "B" } })`, echoed onto every answer row) or to a single answer (`surveyAnswer.rating("q", 5, { metadata: { ms_to_answer: 1200 } })`, merged **over** the submission-level payload). It lands in a JSON column read with `JSONExtract` on demand — use it for A/B variants, answer timings, or any field you may add later, with no schema migration.
+
+## 10. Things to NOT do
 
 - **Don't construct `createGrowthAnalytics` per render.** It owns persistent state; treat it as a module-level singleton.
 - **Don't fire `paywall.*` via raw `track`.** Use the typed helpers so connectors stay correct.
@@ -156,7 +183,7 @@ Every bridge wraps third-party calls in try/catch — a misconfigured connector 
 - **Don't ship the server write key in the browser.** Use the browser-scoped write key for `@gtmeasy/growth/web` and a separate `GTM_EASY_SERVER_WRITE_KEY` for `@gtmeasy/growth/node`.
 - **Don't import from `@gtmeasy/growth` without a subpath** in app code — always pick `/web`, `/node`, or `/react-native`. The barrel export pulls in cross-runtime weight you don't need.
 
-## 10. Verifying the wire-up
+## 11. Verifying the wire-up
 
 1. Open the GTM Easy dashboard → **Events** for the configured `app`.
 2. Load the site once — first event is `app.first_open` + `page.viewed`. Reloading produces only `page.viewed`.

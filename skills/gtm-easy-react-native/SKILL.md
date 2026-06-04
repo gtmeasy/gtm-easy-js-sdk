@@ -149,7 +149,34 @@ installStatsigBridge(analytics, Statsig)
 
 Microsoft Clarity is web-only and has no RN bridge.
 
-## 9. Things to NOT do
+## 9. Onboarding surveys
+
+Capture flexible onboarding answers — choice breakdowns, rating histograms, NPS, and free-text samples aggregate on the dashboard with no server-side survey definition. Mark the survey shown first (optional, drives the shown→completed rate), then submit answers built with the `surveyAnswer.*` helpers (imported from `@gtmeasy/growth/react-native`):
+
+```ts
+import { surveyAnswer, trackSurveyShown } from "@gtmeasy/growth/react-native"
+
+await trackSurveyShown(analytics, { surveyId: "onboarding_v1", surveyName: "Onboarding" })
+
+const ack = await analytics.submitSurvey({
+  surveyId: "onboarding_v1",
+  surveyName: "Onboarding",
+  surveyVersion: "2",
+  responses: [
+    surveyAnswer.singleChoice("source", "tiktok", { label: "TikTok", questionText: "Where did you hear about us?" }),
+    surveyAnswer.multiChoice("goals", ["focus", "limits"], { labels: ["Stay focused", "Set limits"] }),
+    surveyAnswer.nps("recommend", 9),
+    surveyAnswer.rating("first_impression", 5),
+    surveyAnswer.text("anything_else", "Loving it so far"),
+  ],
+})
+```
+
+Pass `status: "partial"` to store answers without firing a completion event, or `status: "dismissed"` when the user closes it. The SDK mints the `submissionId` on the client so a transparent retry reuses the same key (server dedups); pass your own to make app-level retries idempotent. Don't truncate free text — the survey store accepts up to 2 000 chars per answer.
+
+Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metadata: { variant: "B" } })`, echoed onto every answer row) or to a single answer (`surveyAnswer.rating("q", 5, { metadata: { ms_to_answer: 1200 } })`, merged **over** the submission-level payload). It lands in a JSON column read with `JSONExtract` on demand — use it for A/B variants, answer timings, or any field you may add later, with no schema migration.
+
+## 10. Things to NOT do
 
 - **Don't omit `platform`.** The RN adapter falls back to `"web"` and mislabels installs in Meta / Google connectors.
 - **Don't omit `asyncStorage: AsyncStorage`.** Without it, the anonymous id regenerates on every cold start and every cold start looks like a new user.
@@ -158,7 +185,7 @@ Microsoft Clarity is web-only and has no RN bridge.
 - **Don't hash email/phone before passing to `identify`.** The server hashes; double-hashing breaks Enhanced Matching.
 - **Don't import from `@gtmeasy/growth` without `/react-native`** — the barrel export pulls in browser-only `localStorage` weight.
 
-## 10. Verifying the wire-up
+## 11. Verifying the wire-up
 
 1. Open the app on a simulator and watch the GTM Easy dashboard → **Events**.
 2. First cold start should produce `app.first_open` + `app.opened`. Subsequent launches only `app.opened`.
