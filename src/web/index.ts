@@ -37,6 +37,12 @@ export interface AutoInstrumentationOptions {
   trackClicks?: boolean
   /** Capture utm_* + gclid / fbclid params on initial load and call submitWebReferrer. */
   trackReferrer?: boolean
+  /**
+   * Call `trackFirstOpenIfNeeded()` on load. **Default false** — browsers have no real
+   * "install"; when enabled this counts the first localStorage write per browser profile
+   * as an install (and private-mode sessions can repeat). Leave off for normal web apps.
+   */
+  trackInstall?: boolean
 }
 
 /**
@@ -49,6 +55,20 @@ export function installAutoInstrumentation(
 ): () => void {
   if (typeof window === "undefined") return () => {}
   const cleanup: Array<() => void> = []
+  const referrerEnabled = options.trackReferrer ?? true
+  const params = new URLSearchParams(window.location.search)
+
+  // Persist inbound click IDs (gclid/fbclid/…) FIRST so an opt-in install event — the
+  // event that most needs acquisition context — carries them in its _ctx, even on a
+  // fresh browser profile where they aren't in storage yet. The submitWebReferrer call
+  // below reuses this same capture rather than re-reading the params.
+  const clickIdsCaptured: Promise<void> = referrerEnabled
+    ? analytics.captureClickIds(params).then(() => {}, () => {})
+    : Promise.resolve()
+
+  if (options.trackInstall ?? false) {
+    clickIdsCaptured.then(() => analytics.trackFirstOpenIfNeeded()).catch(() => { /* swallow */ })
+  }
 
   if (options.trackPageViews ?? true) {
     const fire = () => {
@@ -92,12 +112,10 @@ export function installAutoInstrumentation(
     cleanup.push(() => window.removeEventListener("click", onClick, { capture: true }))
   }
 
-  if (options.trackReferrer ?? true) {
+  if (referrerEnabled) {
     try {
-      const params = new URLSearchParams(window.location.search)
-      // Persist every recognized click id (fbclid/gclid/ttclid/wbraid/gbraid/
-      // msclkid/twclid/igshid) so subsequent events automatically carry them.
-      analytics.captureClickIds(params).catch(() => { /* swallow */ })
+      // Click ids were already persisted up front (see clickIdsCaptured) so the install
+      // event sees them; here we only need to fire the referrer submission for utm landings.
       const utm = Array.from(params.entries()).filter(([k]) => k.startsWith("utm_") || k === "gclid" || k === "fbclid" || k === "ttclid")
       if (utm.length) {
         const clickId = params.get("gclid") ?? params.get("fbclid") ?? params.get("ttclid")

@@ -11,7 +11,7 @@ Two end-to-end samples that exercise every public surface of
 Both samples share the same five-section layout so flows are identical
 across web, iOS (via Expo Go), and Android (via Expo Go):
 
-1. **Lifecycle** — `trackFirstOpen`, `trackAppOpen`, `page.viewed`
+1. **Lifecycle** — `trackFirstOpenIfNeeded` (install-vs-update gated), `trackAppOpen`, `page.viewed`
 2. **Identity** — `getAnonymousId`, `setUserId`, `identify` (email/phone)
 3. **Click IDs** — `captureClickIds(url)` + manual `recordClickId`
 4. **Funnel** — paywall.opened → plan_selected → upgrade_clicked →

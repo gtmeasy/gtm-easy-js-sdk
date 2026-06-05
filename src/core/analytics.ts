@@ -2,6 +2,15 @@ import { GrowthClickIdStore, CLICK_PROVIDERS, type ClickProvider } from "./click
 import { defaultDebugSink, GrowthDebugSink } from "./debug"
 import { emptyDeviceContextProvider, type DeviceContextProvider } from "./device-context"
 import { fetchHttp } from "./http"
+import {
+  resolveLaunch,
+  FIRST_OPEN_KEY,
+  INSTALL_AT_KEY,
+  LAST_VERSION_KEY,
+  LAST_BUILD_KEY,
+  type GrowthInstallSignal,
+  type GrowthUpdateReason,
+} from "./install-state"
 import { MemoryStorage } from "./storage"
 import {
   GrowthAnalyticsError,
@@ -10,6 +19,7 @@ import {
   type GrowthAnalyticsConfiguration,
   type GrowthBridge,
   type GrowthEventProperties,
+  type GrowthStorage,
   type IdentifyArgs,
   type IngestResponse,
   type SubmitSurveyArgs,
@@ -18,7 +28,7 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.5.0"
+export const GROWTH_JS_SDK_VERSION = "0.6.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
@@ -60,6 +70,8 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     deviceContext: input.deviceContext ?? emptyDeviceContextProvider,
     clickIdStore: input.clickIdStore ?? new GrowthClickIdStore(storage),
     debugSink: input.debugSink ?? defaultDebugSink,
+    installProbe: input.installProbe,
+    trackBuildChanges: input.trackBuildChanges ?? false,
   }
 
   let userId: string | null = null
@@ -78,6 +90,12 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   // generating a different anonymous id and splitting a session.
   let identityHydrated = false
   let identityInFlight: Promise<void> | null = null
+  // Single-flight guard so two concurrent trackFirstOpenIfNeeded() calls (e.g. the
+  // documented RN parallel-useEffect pattern) can't both read firstOpenFired=false and
+  // double-fire app.first_open.
+  let launchInFlight: Promise<IngestResponse | null> | null = null
+  let firstOpenDeprecationWarned = false
+  let serverNoopWarned = false
 
   async function ensureIdentity(): Promise<void> {
     if (identityHydrated) return
@@ -277,6 +295,8 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
       timezone: defaultTimezone(),
       occurredAt: trackArgs?.occurredAt ?? config.now(),
       properties: enrichedProperties,
+      ...(trackArgs?.appVersion != null ? { appVersion: trackArgs.appVersion } : {}),
+      ...(trackArgs?.buildNumber != null ? { buildNumber: trackArgs.buildNumber } : {}),
       ...(trackArgs?.metricValue !== undefined ? { metricValue: trackArgs.metricValue } : {}),
       ...(trackArgs?.metricLabel !== undefined ? { metricLabel: trackArgs.metricLabel } : {}),
     }
@@ -294,8 +314,163 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     return post("/api/v1/growth/events", body)
   }
 
-  async function trackFirstOpen(): Promise<IngestResponse> { return track("app.first_open") }
+  /** @deprecated Fires app.first_open unconditionally — counts updates as installs. Use trackFirstOpenIfNeeded(). */
+  async function trackFirstOpen(): Promise<IngestResponse> {
+    if (config.debug && !firstOpenDeprecationWarned) {
+      firstOpenDeprecationWarned = true
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[gtm-easy] trackFirstOpen() fires app.first_open on every call and will count app updates as new installs. Use trackFirstOpenIfNeeded({ appVersion, buildNumber }) instead.",
+      )
+    }
+    return track("app.first_open")
+  }
   async function trackAppOpen(): Promise<IngestResponse> { return track("app.opened") }
+
+  function storageIsPersistent(): boolean {
+    // Omitted/true → durable; only an explicit `false` (MemoryStorage) disables gating.
+    return config.storage.isPersistent !== false
+  }
+
+  async function resolveStoragePersistence(): Promise<boolean> {
+    // Prefer an async runtime probe (RN AsyncStorage) so a store that rejects writes fails
+    // CLOSED (volatile → never auto-fires an install) rather than open (install spam on every
+    // cold start). Falls back to the static flag for stores without a probe (Web/Memory).
+    const storage: GrowthStorage = config.storage
+    if (storage.probePersistence) {
+      try { return await storage.probePersistence() } catch { return false }
+    }
+    return storageIsPersistent()
+  }
+
+  async function safeProbe(probe: () => Promise<GrowthInstallSignal>): Promise<GrowthInstallSignal> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const timeout = new Promise<GrowthInstallSignal>((resolve) => {
+        timer = setTimeout(() => resolve("unknown"), 3000)
+      })
+      const result = await Promise.race([Promise.resolve(probe()), timeout])
+      return result === "fresh" || result === "existed" ? result : "unknown"
+    } catch {
+      return "unknown"
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
+  async function trackAppUpdated(args: {
+    fromVersion?: string | null
+    fromBuild?: string | null
+    toVersion?: string | null
+    toBuild?: string | null
+    reason: GrowthUpdateReason
+    isRealUpdate: boolean
+  }): Promise<IngestResponse> {
+    const properties: GrowthEventProperties = { reason: args.reason, is_real_update: args.isRealUpdate }
+    if (args.fromVersion != null) properties.from_version = args.fromVersion
+    if (args.fromBuild != null) properties.from_build = args.fromBuild
+    if (args.toVersion != null) properties.to_version = args.toVersion
+    if (args.toBuild != null) properties.to_build = args.toBuild
+    // Also send the new version/build as the top-level appVersion/buildNumber so the
+    // server's per-version breakdown attributes the update to the version it landed on.
+    return track("app.updated", properties, { appVersion: args.toVersion, buildNumber: args.toBuild })
+  }
+
+  async function markInstalledBeforeTracking(args?: { appVersion?: string | null; buildNumber?: string | null }): Promise<void> {
+    if (!storageIsPersistent()) return
+    const already = (await Promise.resolve(config.storage.get(FIRST_OPEN_KEY))) === "1"
+    if (already) return
+    await Promise.resolve(config.storage.set(FIRST_OPEN_KEY, "1"))
+    await Promise.resolve(config.storage.set(LAST_VERSION_KEY, args?.appVersion ?? ""))
+    await Promise.resolve(config.storage.set(LAST_BUILD_KEY, args?.buildNumber ?? ""))
+  }
+
+  async function trackFirstOpenIfNeeded(args?: { appVersion?: string | null; buildNumber?: string | null }): Promise<IngestResponse | null> {
+    if (config.platform === "server") {
+      if (config.debug && !serverNoopWarned) {
+        serverNoopWarned = true
+        // eslint-disable-next-line no-console
+        console.warn("[gtm-easy] trackFirstOpenIfNeeded() is a no-op on the server platform (installs are a client concept).")
+      }
+      return null
+    }
+    if (launchInFlight) return launchInFlight
+    launchInFlight = (async () => {
+      const currentVersion = args?.appVersion ?? null
+      const currentBuild = args?.buildNumber ?? null
+      const persistent = await resolveStoragePersistence()
+      const [firstOpenRaw, lastVersion, lastBuild] = await Promise.all([
+        Promise.resolve(config.storage.get(FIRST_OPEN_KEY)),
+        Promise.resolve(config.storage.get(LAST_VERSION_KEY)),
+        Promise.resolve(config.storage.get(LAST_BUILD_KEY)),
+      ])
+      const firstOpenFired = firstOpenRaw === "1"
+      const signal: GrowthInstallSignal =
+        !firstOpenFired && persistent && config.installProbe ? await safeProbe(config.installProbe) : "unknown"
+
+      const launch = resolveLaunch({
+        firstOpenFired,
+        lastVersion: lastVersion || null,
+        lastBuild: lastBuild || null,
+        currentVersion,
+        currentBuild,
+        signal,
+        storageIsPersistent: persistent,
+        environment: config.environment,
+        trackBuildChanges: config.trackBuildChanges,
+      })
+
+      // Advance the stored baseline to the current version/build — but only when the caller
+      // actually supplied one. Writing "" for a null current would wipe a good baseline and
+      // make the next real launch look like an update (resolveLaunch already ignores a null
+      // current), so leave the stored value untouched instead.
+      const persistBaseline = async (): Promise<void> => {
+        if (!persistent) return
+        if (currentVersion !== null) await Promise.resolve(config.storage.set(LAST_VERSION_KEY, currentVersion))
+        if (currentBuild !== null) await Promise.resolve(config.storage.set(LAST_BUILD_KEY, currentBuild))
+      }
+
+      if (launch.type === "fresh_install") {
+        // At-most-once: persist the gate + baseline BEFORE sending so a fresh install is never
+        // double-counted even if the post fails (we accept losing one install over inflating).
+        await Promise.resolve(config.storage.set(FIRST_OPEN_KEY, "1"))
+        await Promise.resolve(config.storage.set(INSTALL_AT_KEY, config.now()))
+        await persistBaseline()
+        // Forward the install-time version so the install row feeds the per-version breakdown.
+        return track("app.first_open", undefined, { appVersion: currentVersion, buildNumber: currentBuild })
+      }
+      if (launch.type === "update") {
+        // Advance the baseline only AFTER the update posts: if the send throws, the baseline
+        // stays put so the next launch retries the same app.updated (at-least-once — a rare
+        // duplicate is acceptable for a non-install signal, a silent drop is not).
+        //
+        // The first-open flag is the exception: for a pre_existing_install adoption we set it
+        // BEFORE sending and keep it set even on failure. This is deliberate (at-most-once for
+        // the adoption event): re-running would re-invoke the install probe, and a flaky probe
+        // could then misclassify a pre-existing user as a brand-new install. Losing one
+        // adoption event is the safe trade-off vs. risking an inflated install count.
+        if (!firstOpenFired) await Promise.resolve(config.storage.set(FIRST_OPEN_KEY, "1"))
+        const res = await trackAppUpdated({
+          fromVersion: launch.fromVersion,
+          fromBuild: launch.fromBuild,
+          toVersion: currentVersion,
+          toBuild: currentBuild,
+          reason: launch.reason,
+          isRealUpdate: launch.reason !== "pre_existing_install",
+        })
+        await persistBaseline()
+        return res
+      }
+      // Silent relaunch (same version, or a null current adopting the existing baseline).
+      await persistBaseline()
+      return null
+    })()
+    try {
+      return await launchInFlight
+    } finally {
+      launchInFlight = null
+    }
+  }
 
   async function trackPurchaseCompleted(args: { amount: number; currency: string; productId?: string }): Promise<IngestResponse> {
     const properties: GrowthEventProperties = { currency: args.currency }
@@ -411,6 +586,9 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     identify,
     track,
     trackFirstOpen,
+    trackFirstOpenIfNeeded,
+    trackAppUpdated,
+    markInstalledBeforeTracking,
     trackAppOpen,
     trackPurchaseCompleted,
     submitWebReferrer,

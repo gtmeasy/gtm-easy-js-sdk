@@ -4,6 +4,10 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.6.0)
+
+- **Installs vs. updates**: new `trackFirstOpenIfNeeded({ appVersion, buildNumber })` fires `app.first_open` **only** for a genuine fresh install (at-most-once, persisted before send) and emits a non-install `app.updated` when the bundle version/build changes between launches. The bare `trackFirstOpen()` is now **deprecated** — calling it every launch counted app updates as new installs and inflated acquisition numbers. Shipped lockstep at **0.6.0** across TypeScript / Swift / Kotlin.
+
 ## What's new (v0.5.0)
 
 - **Version alignment**: the GTM Easy SDKs (TypeScript / Swift / Kotlin) are now unified at **0.5.0** — no API changes since 0.4.x, so onboarding surveys + extensible survey metadata ship at the same version on every platform.
@@ -54,9 +58,15 @@ export const analytics = createGrowthAnalytics({
 })
 
 await analytics.identify("user_123", { plan: "pro" })
-await analytics.trackFirstOpen()
 await analytics.trackPurchaseCompleted({ amount: 9.99, currency: "USD", productId: "pro_monthly" })
 ```
+
+> **Installs vs. updates.** On mobile (React Native), call
+> `trackFirstOpenIfNeeded({ appVersion, buildNumber })` once per launch — it fires
+> `app.first_open` only for a genuine fresh install and `app.updated` (never an install)
+> when the app version/build changes. The raw `trackFirstOpen()` is **deprecated**: it
+> fires on every call and would count updates as new installs. Browsers have no real
+> "install", so web leaves install tracking off by default.
 
 `endpoint` defaults to the production ingest host
 (`https://www.gtmeasy.com` — exported as `GROWTH_DEFAULT_ENDPOINT`). Override
@@ -76,16 +86,40 @@ export const analytics = createGrowthAnalytics({
 ## Quick start — React Native
 
 ```ts
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import { createGrowthAnalytics } from "@gtmeasy/growth/react-native"
 
 export const analytics = createGrowthAnalytics({
   app: "<gtm-easy-app-id>",
   writeKey: "<per-app-write-key>",
+  // REQUIRED for install tracking: without durable storage the SDK falls back to
+  // volatile MemoryStorage, and trackFirstOpenIfNeeded() no-ops (returns null) so it
+  // never fires app.first_open / app.updated. AsyncStorage makes the install gate durable.
+  asyncStorage: AsyncStorage,
 })
+
+// Once per cold launch — fires app.first_open ONLY on a genuine fresh install,
+// and app.updated (never an install) when the bundle version/build changes.
+// Pass the running app version/build from your native bundle (e.g. expo-constants
+// or react-native-device-info) so updates are detected across launches.
+await analytics.trackFirstOpenIfNeeded({ appVersion: "1.2.0", buildNumber: "1200" })
 
 await analytics.identify("user_123")
 await analytics.track("page.viewed", { route: "Home" })
 ```
+
+> **Why not `trackFirstOpen()`?** The bare `trackFirstOpen()` is **deprecated** — it
+> fires every time it is called, so calling it each launch would report app updates as
+> brand-new installs and inflate your acquisition numbers. `trackFirstOpenIfNeeded`
+> persists a flag plus the last seen version/build (via the same durable storage as the
+> anonymous id) and decides install-vs-update locally before sending anything.
+>
+> It is **at-most-once**: the flag is persisted before the event is sent and never retried,
+> so an install is never double-counted. The trade-off is that a device offline on its very
+> first launch (and never relaunched at the same version online) can miss `app.first_open` —
+> rare, since freshly installed apps are almost always online. The gating also requires
+> durable storage: on React Native pass `asyncStorage`, or the SDK stays volatile and will
+> not auto-fire installs at all.
 
 ## Quick start — Node / Bun / Deno (server-side)
 

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { createGrowthAnalyticsCore } from "./analytics"
+import type { GrowthInstallSignal } from "./install-state"
 import { MemoryStorage } from "./storage"
-import { GrowthAnalyticsError, type GrowthHttp, type GrowthHttpRequest } from "./types"
+import { GrowthAnalyticsError, type GrowthHttp, type GrowthHttpRequest, type GrowthPlatform, type GrowthStorage } from "./types"
 
 function makeAnalytics(overrides: { http?: GrowthHttp } = {}) {
   const calls: GrowthHttpRequest[] = []
@@ -212,5 +213,206 @@ describe("createGrowthAnalyticsCore", () => {
     const body = JSON.parse(calls[calls.length - 1]!.body)
     expect(body.userId).toBeNull()
     expect(body.anonymousId).not.toBe(before)
+  })
+})
+
+class PersistentStore implements GrowthStorage {
+  readonly isPersistent = true
+  private m = new Map<string, string>()
+  get(key: string): string | null { return this.m.get(key) ?? null }
+  set(key: string, value: string): void { this.m.set(key, value) }
+}
+
+function makeInstallAnalytics(opts: {
+  storage?: GrowthStorage
+  platform?: GrowthPlatform
+  environment?: "production" | "staging" | "development"
+  installProbe?: () => Promise<GrowthInstallSignal>
+  /** When true, every ingest POST returns 5xx so the track call throws (transient failure). */
+  failHttp?: boolean
+} = {}) {
+  const calls: GrowthHttpRequest[] = []
+  const analytics = createGrowthAnalyticsCore({
+    app: "t",
+    endpoint: "https://e.com",
+    writeKey: "k",
+    environment: opts.environment ?? "production",
+    platform: opts.platform ?? "ios",
+    storage: opts.storage ?? new PersistentStore(),
+    installProbe: opts.installProbe,
+    http: async (req) => {
+      calls.push(req)
+      if (opts.failHttp) return { status: 503, body: "upstream unavailable" }
+      return { status: 201, body: JSON.stringify({ event: { id: "e", eventName: "x" }, warnings: [] }) }
+    },
+    generateId: () => "anon_fixed",
+    now: () => "2026-06-03T00:00:00.000Z",
+  })
+  return { analytics, calls }
+}
+
+const eventNames = (calls: GrowthHttpRequest[]) => calls.map((c) => JSON.parse(c.body).eventName)
+
+describe("trackFirstOpenIfNeeded", () => {
+  it("fires app.first_open once for a fresh install and is idempotent across calls", async () => {
+    const store = new PersistentStore()
+    const { analytics, calls } = makeInstallAnalytics({ storage: store })
+    const r1 = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    const r2 = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(eventNames(calls)).toEqual(["app.first_open"])
+    expect(r1?.eventName).toBe("x")
+    expect(r2).toBeNull()
+    expect(store.get("gtm_easy_growth_first_open_fired")).toBe("1")
+  })
+
+  it("sends the install version as the top-level appVersion/buildNumber (feeds version breakdown)", async () => {
+    const { analytics, calls } = makeInstallAnalytics()
+    await analytics.trackFirstOpenIfNeeded({ appVersion: "1.4.2", buildNumber: "142" })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.eventName).toBe("app.first_open")
+    expect(body.appVersion).toBe("1.4.2")
+    expect(body.buildNumber).toBe("142")
+  })
+
+  it("app.updated also carries the landed version as top-level appVersion", async () => {
+    const store = new PersistentStore()
+    await makeInstallAnalytics({ storage: store }).analytics.trackFirstOpenIfNeeded({ appVersion: "0.9.0", buildNumber: "9" })
+    const { analytics, calls } = makeInstallAnalytics({ storage: store })
+    await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.eventName).toBe("app.updated")
+    expect(body.appVersion).toBe("1.0.0")
+    expect(body.buildNumber).toBe("10")
+  })
+
+  it("an arg-less relaunch after a baseline neither fires app.updated nor wipes the baseline", async () => {
+    const store = new PersistentStore()
+    await makeInstallAnalytics({ storage: store }).analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+
+    // Relaunch with NO version args (caller omitted them / native lookup failed).
+    const argless = makeInstallAnalytics({ storage: store })
+    const r = await argless.analytics.trackFirstOpenIfNeeded()
+    expect(r).toBeNull()
+    expect(argless.calls).toHaveLength(0) // no bogus app.updated
+
+    // Baseline must be intact: a later real bump fires a correctly-attributed update.
+    const next = makeInstallAnalytics({ storage: store })
+    await next.analytics.trackFirstOpenIfNeeded({ appVersion: "1.1.0", buildNumber: "11" })
+    expect(eventNames(next.calls)).toEqual(["app.updated"])
+    expect(JSON.parse(next.calls[0]!.body).properties).toMatchObject({ from_version: "1.0.0", to_version: "1.1.0" })
+  })
+
+  it("retries app.updated after a failed send (baseline only advances on success)", async () => {
+    const store = new PersistentStore()
+    await makeInstallAnalytics({ storage: store }).analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+
+    // Launch at 1.1.0, but the ingest POST fails → the call throws and the baseline must
+    // NOT advance, so the update isn't silently lost.
+    const failing = makeInstallAnalytics({ storage: store, failHttp: true })
+    await expect(failing.analytics.trackFirstOpenIfNeeded({ appVersion: "1.1.0", buildNumber: "11" })).rejects.toBeTruthy()
+
+    // Next launch at 1.1.0 with a healthy backend re-fires the same update from 1.0.0.
+    const retry = makeInstallAnalytics({ storage: store })
+    await retry.analytics.trackFirstOpenIfNeeded({ appVersion: "1.1.0", buildNumber: "11" })
+    expect(eventNames(retry.calls)).toEqual(["app.updated"])
+    expect(JSON.parse(retry.calls[0]!.body).properties).toMatchObject({ from_version: "1.0.0", to_version: "1.1.0" })
+  })
+
+  it("fails closed when probePersistence reports broken storage — no repeated app.first_open", async () => {
+    // A store that claims isPersistent but whose probe fails (e.g. a broken AsyncStorage).
+    const brokenAsyncStore: GrowthStorage = {
+      isPersistent: true,
+      probePersistence: async () => false,
+      get: () => null,
+      set: () => {},
+    }
+    const a = makeInstallAnalytics({ storage: brokenAsyncStore })
+    const r1 = await a.analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    const r2 = await a.analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(r1).toBeNull()
+    expect(r2).toBeNull()
+    expect(a.calls).toHaveLength(0) // treated volatile → never auto-fires an install
+  })
+
+  it("fires app.updated (not app.first_open) when the version changed", async () => {
+    const store = new PersistentStore()
+    // Simulate a prior run at 0.9.0.
+    await makeInstallAnalytics({ storage: store }).analytics.trackFirstOpenIfNeeded({ appVersion: "0.9.0", buildNumber: "9" })
+
+    const { analytics, calls } = makeInstallAnalytics({ storage: store })
+    await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(eventNames(calls)).toEqual(["app.updated"])
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.properties).toMatchObject({ reason: "version_change", is_real_update: true, from_version: "0.9.0", to_version: "1.0.0" })
+  })
+
+  it("existed probe suppresses app.first_open → pre_existing app.updated", async () => {
+    const { analytics, calls } = makeInstallAnalytics({ installProbe: async () => "existed" })
+    await analytics.trackFirstOpenIfNeeded({ appVersion: "2.3.0", buildNumber: "200" })
+    expect(eventNames(calls)).toEqual(["app.updated"])
+    const body = JSON.parse(calls[0]!.body)
+    expect(body.properties).toMatchObject({ reason: "pre_existing_install", is_real_update: false })
+    expect(body.properties.from_version).toBeUndefined()
+  })
+
+  it("never fires from a volatile store (MemoryStorage)", async () => {
+    const { analytics, calls } = makeInstallAnalytics({ storage: new MemoryStorage() })
+    const r = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(r).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
+  it("no-ops on the server platform", async () => {
+    const { analytics, calls } = makeInstallAnalytics({ platform: "server" })
+    const r = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(r).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
+  it("concurrent calls fire app.first_open only once (single-flight)", async () => {
+    const { analytics, calls } = makeInstallAnalytics()
+    await Promise.all([
+      analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" }),
+      analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" }),
+    ])
+    expect(eventNames(calls)).toEqual(["app.first_open"])
+  })
+
+  it("reset() does not clear install state — first_open never re-fires after logout", async () => {
+    const store = new PersistentStore()
+    const { analytics, calls } = makeInstallAnalytics({ storage: store })
+    await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    await analytics.reset()
+    const r = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(r).toBeNull()
+    expect(eventNames(calls).filter((n) => n === "app.first_open")).toHaveLength(1)
+  })
+
+  it("markInstalledBeforeTracking suppresses the first app.first_open", async () => {
+    const { analytics, calls } = makeInstallAnalytics()
+    await analytics.markInstalledBeforeTracking({ appVersion: "1.0.0", buildNumber: "10" })
+    const r = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0.0", buildNumber: "10" })
+    expect(r).toBeNull()
+    expect(calls).toHaveLength(0)
+  })
+
+  it("markInstalledBeforeTracking() with NO version args fires neither app.first_open nor a spurious app.updated", async () => {
+    const store = new PersistentStore()
+    const first = makeInstallAnalytics({ storage: store })
+    await first.analytics.markInstalledBeforeTracking() // no baseline recorded
+    const r = await first.analytics.trackFirstOpenIfNeeded({ appVersion: "2.0.0", buildNumber: "100" })
+    expect(r).toBeNull()
+    expect(first.calls).toHaveLength(0) // silent: no install, and NOT a bogus version_change from null
+
+    // The silent launch must have adopted 2.0.0 as the baseline, so a later real bump
+    // fires a correctly-attributed app.updated (proves the baseline was persisted).
+    const next = makeInstallAnalytics({ storage: store })
+    await next.analytics.trackFirstOpenIfNeeded({ appVersion: "3.0.0", buildNumber: "200" })
+    expect(eventNames(next.calls)).toEqual(["app.updated"])
+    expect(JSON.parse(next.calls[0]!.body).properties).toMatchObject({
+      reason: "version_change",
+      from_version: "2.0.0",
+      to_version: "3.0.0",
+    })
   })
 })

@@ -54,8 +54,19 @@ Three things must happen in this exact order on every cold start. **Doing them i
 ```tsx
 // App.tsx
 import { useEffect } from "react"
+import Constants from "expo-constants"
 import * as Linking from "expo-linking"
+import { Platform } from "react-native"
 import { analytics } from "./growthClient"
+
+// Pull the running bundle's version + build from the native manifest so the SDK
+// can tell a fresh install apart from an app update across launches.
+const appVersion = Constants.expoConfig?.version ?? "0.0.0"
+const buildNumber = String(
+  Platform.OS === "ios"
+    ? Constants.expoConfig?.ios?.buildNumber ?? "0"
+    : Constants.expoConfig?.android?.versionCode ?? 0,
+)
 
 export default function App() {
   useEffect(() => {
@@ -65,9 +76,13 @@ export default function App() {
       const initial = await Linking.getInitialURL()
       if (cancelled) return
       if (initial) await analytics.captureClickIds(initial)
-      // 2. trackFirstOpen is server-deduped by identityHash — safe to call every launch.
-      void analytics.trackFirstOpen()
-      // 3. trackAppOpen on every cold start.
+      // 2. Fire app.first_open ONLY for a genuine fresh install; an app UPDATE
+      //    (version/build changed) emits app.updated instead — never an install.
+      //    This is NOT server-deduped: call the gated helper, not trackFirstOpen().
+      //    AWAIT it so the inaugural event for a new install is app.first_open, not a
+      //    bare app.opened (both are fire-and-forget HTTP — without the await they race).
+      await analytics.trackFirstOpenIfNeeded({ appVersion, buildNumber })
+      // 3. trackAppOpen on every cold start, after the install/update classification.
       void analytics.trackAppOpen()
     })()
 
@@ -82,7 +97,16 @@ export default function App() {
 }
 ```
 
-For bare React Native, swap `expo-linking` for `Linking` from `react-native`.
+For bare React Native, swap `expo-linking` for `Linking` from `react-native`, and read
+the version/build from `react-native-device-info` (`getVersion()` / `getBuildNumber()`).
+
+> **Existing user base?** If you are adding GTM Easy to an app that already has installs,
+> call `analytics.markInstalledBeforeTracking({ appVersion, buildNumber })` ONCE on the
+> first launch after the upgrade (before the launch sequence), passing the **same**
+> `appVersion`/`buildNumber` you give `trackFirstOpenIfNeeded`. That records the
+> pre-existing base as already installed (no `app.first_open` flood) and seeds the version
+> baseline so the very next launch is silent rather than a spurious `app.updated`. New
+> installs after that fire normally.
 
 ## 4. Identify + track
 
@@ -180,7 +204,8 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 
 - **Don't omit `platform`.** The RN adapter falls back to `"web"` and mislabels installs in Meta / Google connectors.
 - **Don't omit `asyncStorage: AsyncStorage`.** Without it, the anonymous id regenerates on every cold start and every cold start looks like a new user.
-- **Don't run `getInitialURL()` and `trackFirstOpen()` in separate parallel `useEffect`s.** They race; click IDs miss the launch event.
+- **Don't run `getInitialURL()` and `trackFirstOpenIfNeeded()` in separate parallel `useEffect`s.** They race; click IDs miss the launch event.
+- **Don't call the deprecated `trackFirstOpen()` on every launch.** It is NOT server-deduped — it fires an install each call, so app updates get counted as new installs. Use `trackFirstOpenIfNeeded({ appVersion, buildNumber })`, which gates on persistent state.
 - **Don't fire `paywall.*` via raw `track`.** Use the typed helpers so connectors stay correct.
 - **Don't hash email/phone before passing to `identify`.** The server hashes; double-hashing breaks Enhanced Matching.
 - **Don't import from `@gtmeasy/growth` without `/react-native`** — the barrel export pulls in browser-only `localStorage` weight.
@@ -188,7 +213,7 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 ## 11. Verifying the wire-up
 
 1. Open the app on a simulator and watch the GTM Easy dashboard → **Events**.
-2. First cold start should produce `app.first_open` + `app.opened`. Subsequent launches only `app.opened`.
+2. First cold start (fresh install) should produce `app.first_open` + `app.opened`. Subsequent launches at the same version only `app.opened`. After bumping the app version/build and relaunching, you should see `app.updated` (with `from_version`/`to_version`) + `app.opened` — **never** a second `app.first_open`.
 3. Deep-link into the app with a click ID:
    - iOS sim: `xcrun simctl openurl booted "yourapp://onboarding?gclid=sim_g"`
    - Android emu: `adb shell am start -W -a android.intent.action.VIEW -d "yourapp://onboarding?gclid=adb_g" <package>`

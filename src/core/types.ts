@@ -46,11 +46,39 @@ export interface GrowthAnalyticsConfiguration {
   clickIdStore?: import("./click-id-store").GrowthClickIdStore
   /** Override debug sink for testing. */
   debugSink?: import("./debug").GrowthDebugSink
+  /**
+   * Optional probe for `trackFirstOpenIfNeeded` to auto-suppress the adoption spike when an
+   * app with an existing user base first adds the SDK. Return `"existed"` for a device that
+   * had the app before tracking, `"fresh"` for a brand-new install, or `"unknown"` when
+   * unsure (→ treated as fresh). Awaited once on the first SDK run; a throw/timeout is
+   * treated as `"unknown"`. RN/Expo apps can wire `expo-application` install time here.
+   */
+  installProbe?: () => Promise<import("./install-state").GrowthInstallSignal>
+  /**
+   * When true, emit `app.updated` for build-number-only changes even outside production.
+   * Default false — build numbers churn on every CI build.
+   */
+  trackBuildChanges?: boolean
 }
 
 export interface GrowthStorage {
   get(key: string): Promise<string | null> | string | null
   set(key: string, value: string): Promise<void> | void
+  /**
+   * Whether values survive a process/app restart. Volatile stores (in-memory) set this to
+   * `false` so `trackFirstOpenIfNeeded` never auto-fires `app.first_open` from a store that
+   * resets on every cold start. Omitted/`true` is treated as durable.
+   */
+  readonly isPersistent?: boolean
+  /**
+   * Optional runtime durability check. Async stores (React Native AsyncStorage) can't probe
+   * synchronously at construction the way `WebStorage` does, yet a store that rejects every
+   * write would silently defeat the install gate and re-fire `app.first_open` on every cold
+   * start. When present, `trackFirstOpenIfNeeded` awaits this (round-tripping a sentinel) and
+   * treats a `false` result as volatile — so broken persistence fails closed (no auto-install)
+   * rather than open (install spam). Falls back to `isPersistent` when absent.
+   */
+  probePersistence?(): Promise<boolean>
 }
 
 export interface GrowthHttpRequest {
@@ -93,6 +121,11 @@ export interface TrackArgs {
   occurredAt?: string
   /** Override the source field. Defaults to "native" for SDK-originated calls. */
   source?: string
+  /** Running app version, sent as the top-level `appVersion` so it feeds the
+   *  server's per-version breakdown (lifecycle events like app.first_open / app.updated). */
+  appVersion?: string | null
+  /** Running build number, sent as the top-level `buildNumber`. */
+  buildNumber?: string | null
 }
 
 export interface IngestResponse {
@@ -187,7 +220,37 @@ export interface GrowthBridge {
 export interface GrowthAnalytics {
   identify(userIdOrArgs?: string | IdentifyArgs | null, traits?: GrowthEventProperties): Promise<IngestResponse>
   track(eventName: string, properties?: GrowthEventProperties, args?: TrackArgs): Promise<IngestResponse>
+  /**
+   * @deprecated Fires `app.first_open` unconditionally on every call, so calling it on each
+   * launch counts app updates as new installs. Use {@link trackFirstOpenIfNeeded} instead.
+   */
   trackFirstOpen(): Promise<IngestResponse>
+  /**
+   * The gated install/update entrypoint — call once per launch. Fires `app.first_open` only
+   * for a genuine fresh install, `app.updated` when the version/build changed since the last
+   * run (never an install), or nothing on a same-version relaunch. Persists the result, so
+   * it is idempotent across launches. No-op (returns null) on the `server` platform and on
+   * non-persistent storage. Pass the host app's version/build so updates are detected.
+   */
+  trackFirstOpenIfNeeded(args?: { appVersion?: string | null; buildNumber?: string | null }): Promise<IngestResponse | null>
+  /**
+   * Record an app update (or first SDK run on a pre-existing install). Never counted as an
+   * install. `trackFirstOpenIfNeeded` calls this for you — use it directly only for custom
+   * lifecycle wiring.
+   */
+  trackAppUpdated(args: {
+    fromVersion?: string | null
+    fromBuild?: string | null
+    toVersion?: string | null
+    toBuild?: string | null
+    reason: import("./install-state").GrowthUpdateReason
+    isRealUpdate: boolean
+  }): Promise<IngestResponse>
+  /**
+   * Mark this install as pre-existing without firing `app.first_open`. Idempotent. Call in
+   * the release that first adds the SDK, for users you already know are existing.
+   */
+  markInstalledBeforeTracking(args?: { appVersion?: string | null; buildNumber?: string | null }): Promise<void>
   trackAppOpen(): Promise<IngestResponse>
   trackPurchaseCompleted(args: { amount: number; currency: string; productId?: string }): Promise<IngestResponse>
   submitWebReferrer(referrer: string, click_id?: string | null): Promise<IngestResponse>

@@ -164,6 +164,7 @@ export type TrackEventRequestPlatformEnum = typeof TrackEventRequestPlatformEnum
 export const TrackEventRequestEventNameEnum = {
     AppFirstOpen: 'app.first_open',
     AppOpened: 'app.opened',
+    AppUpdated: 'app.updated',
     UserCreated: 'user.created',
     SessionStarted: 'session.started',
     SessionEnded: 'session.ended',

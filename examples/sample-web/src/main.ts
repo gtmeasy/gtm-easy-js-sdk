@@ -42,8 +42,11 @@ defaultDebugSink.subscribe((event) => {
 })
 
 // ───────────────────────────────────────────────────────────── lifecycle
+// trackFirstOpenIfNeeded fires app.first_open only once per persistent browser
+// profile (and app.updated if a version/build is supplied and changes). The bare
+// trackFirstOpen() is deprecated — it would fire on every click.
 document.getElementById("firstOpen")!.addEventListener("click", () => {
-  void analytics.trackFirstOpen()
+  void analytics.trackFirstOpenIfNeeded()
 })
 document.getElementById("appOpened")!.addEventListener("click", () => {
   void analytics.trackAppOpen()

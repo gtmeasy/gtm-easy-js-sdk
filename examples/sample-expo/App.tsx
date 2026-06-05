@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { Button, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Button, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import Constants from "expo-constants"
 import * as Linking from "expo-linking"
 import { StatusBar } from "expo-status-bar"
 import {
@@ -19,28 +20,41 @@ import { analytics } from "./growthClient"
  * payloads land on the backend.
  *
  * Sections:
- *   - Lifecycle      — trackFirstOpen + trackAppOpen + trackPageViewed
+ *   - Lifecycle      — trackFirstOpenIfNeeded + trackAppOpen + trackPageViewed
  *   - Identity       — getAnonymousId / setUserId / identify with traits
  *   - Click IDs      — captureClickIds(URL) + manual recordClickId
  *   - Funnel         — paywall.opened → ... → purchase.completed
  *   - Debug Console  — tail of defaultDebugSink (every identify+track)
  */
+// Running bundle version + build, read from the Expo manifest. The SDK persists
+// these and only fires app.first_open on a genuine fresh install — an app UPDATE
+// (version/build changed) emits app.updated instead, never a second install.
+const APP_VERSION = Constants.expoConfig?.version ?? "0.0.0"
+const APP_BUILD = String(
+  Platform.OS === "ios"
+    ? Constants.expoConfig?.ios?.buildNumber ?? "0"
+    : Constants.expoConfig?.android?.versionCode ?? 0,
+)
+
 export default function App() {
   // ───────────────────────────────────────────────────── launch sequence
   // Run in a fixed order so the first event already carries any inbound
   // click IDs in _ctx:
   //   1. await Linking.getInitialURL() + captureClickIds
-  //   2. trackFirstOpen (idempotent — server dedupes by identityHash)
+  //   2. trackFirstOpenIfNeeded — install-vs-update is decided locally from
+  //      persisted state; this is NOT server-deduped, so never swap in the
+  //      deprecated trackFirstOpen() here (it would count updates as installs).
   //   3. trackAppOpen (every cold start)
-  // Firing trackFirstOpen/trackAppOpen in a separate parallel useEffect
-  // races getInitialURL() and ships the launch events without attribution.
+  // Firing these in a separate parallel useEffect races getInitialURL() and
+  // ships the launch events without attribution.
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const initial = await Linking.getInitialURL()
       if (cancelled) return
       if (initial) await analytics.captureClickIds(initial)
-      void analytics.trackFirstOpen()
+      // Await so a fresh install's inaugural event is app.first_open, not a bare app.opened.
+      await analytics.trackFirstOpenIfNeeded({ appVersion: APP_VERSION, buildNumber: APP_BUILD })
       void analytics.trackAppOpen()
     })()
     const sub = Linking.addEventListener("url", ({ url }) => {
@@ -100,7 +114,7 @@ export default function App() {
 
         <Text style={styles.section}>Lifecycle</Text>
         <Button title="trackAppOpen" onPress={() => void analytics.trackAppOpen()} />
-        <Button title="trackFirstOpen (idempotent)" onPress={() => void analytics.trackFirstOpen()} />
+        <Button title="trackFirstOpenIfNeeded (install/update gated)" onPress={() => void analytics.trackFirstOpenIfNeeded({ appVersion: APP_VERSION, buildNumber: APP_BUILD })} />
         <Button title="track('page.viewed')" onPress={() => void analytics.track("page.viewed", { screen: "home" })} />
 
         <Text style={styles.section}>Identity</Text>

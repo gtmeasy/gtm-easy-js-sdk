@@ -57,8 +57,15 @@ installAutoInstrumentation(analytics, {
   trackPageViews: true,   // initial load + history.pushState/popstate
   trackClicks: true,      // ONLY elements carrying data-gtm-event=...
   trackReferrer: true,    // utm_* + gclid + fbclid + every supported click id
+  // trackInstall defaults to FALSE — browsers have no real "install" and a cleared
+  // localStorage / private window would re-fire it. Leave it off for normal web apps.
 })
 ```
+
+`trackInstall` is intentionally off by default: `app.first_open` is a mobile-install
+signal, and the web has no durable analog. Turn it on only for installable PWAs where
+you genuinely want the first persisted-storage write per browser profile counted as an
+install — and expect private-mode sessions to repeat it.
 
 To emit a click event, mark the element:
 
@@ -186,7 +193,7 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 ## 11. Verifying the wire-up
 
 1. Open the GTM Easy dashboard → **Events** for the configured `app`.
-2. Load the site once — first event is `app.first_open` + `page.viewed`. Reloading produces only `page.viewed`.
+2. Load the site once — first event is `page.viewed` (web does **not** fire `app.first_open` unless you opt in with `trackInstall: true`). Reloading produces another `page.viewed`.
 3. Open the site with `?gclid=test_g` — the `page.viewed`'s `_ctx.gclid` must be `test_g`.
 4. Click a `data-gtm-event="cta.clicked"` element — dashboard shows `cta.clicked` within a few seconds.
 5. Call `analytics.identify("user_123")` — Users view links `user_123` to the device's anonymous id.
