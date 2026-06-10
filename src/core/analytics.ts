@@ -28,7 +28,7 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.6.0"
+export const GROWTH_JS_SDK_VERSION = "0.7.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
@@ -72,6 +72,33 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     debugSink: input.debugSink ?? defaultDebugSink,
     installProbe: input.installProbe,
     trackBuildChanges: input.trackBuildChanges ?? false,
+    disabled: input.disabled ?? false,
+  }
+
+  if (config.disabled) {
+    let _userId: string | null = null
+    const _anonId = config.generateId()
+    const _noop: IngestResponse = { eventId: null, eventName: null, warnings: [] }
+    return {
+      identify() { return Promise.resolve(_noop) },
+      track() { return Promise.resolve(_noop) },
+      trackFirstOpen() { return Promise.resolve(_noop) },
+      trackFirstOpenIfNeeded() { return Promise.resolve(null) },
+      trackAppUpdated() { return Promise.resolve(_noop) },
+      trackAppOpen() { return Promise.resolve(_noop) },
+      trackPurchaseCompleted() { return Promise.resolve(_noop) },
+      submitWebReferrer() { return Promise.resolve(_noop) },
+      submitSurvey(args) { return Promise.resolve({ submissionId: args.submissionId ?? config.generateId(), accepted: 0, warnings: [] }) },
+      addBridge() { return () => {} },
+      setUserId(id) { _userId = id },
+      getUserId() { return _userId },
+      getAnonymousId() { return Promise.resolve(_anonId) },
+      reset() { _userId = null; return Promise.resolve() },
+      recordClickId() { return Promise.resolve() },
+      captureClickIds() { return Promise.resolve(0) },
+      markInstalledBeforeTracking() { return Promise.resolve() },
+      _config() { return config },
+    }
   }
 
   let userId: string | null = null

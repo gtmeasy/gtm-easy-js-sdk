@@ -59,6 +59,12 @@ export interface GrowthAnalyticsConfiguration {
    * Default false — build numbers churn on every CI build.
    */
   trackBuildChanges?: boolean
+  /**
+   * When true, all network calls are suppressed and every method returns an empty
+   * noop response. Use to disable tracking in development or CI environments
+   * without removing SDK call sites from your code.
+   */
+  disabled?: boolean
 }
 
 export interface GrowthStorage {

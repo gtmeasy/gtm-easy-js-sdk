@@ -388,6 +388,38 @@ describe("trackFirstOpenIfNeeded", () => {
     expect(eventNames(calls).filter((n) => n === "app.first_open")).toHaveLength(1)
   })
 
+  it("disabled: true suppresses all network calls and returns noop responses", async () => {
+    const calls: unknown[] = []
+    const analytics = createGrowthAnalyticsCore({
+      app: "test-app",
+      writeKey: "gte_test",
+      storage: new MemoryStorage(),
+      http: async (req) => { calls.push(req); return { status: 201, body: "{}" } },
+      disabled: true,
+    })
+    const identifyRes = await analytics.identify("user_123", { plan: "pro" })
+    const trackRes = await analytics.track("paywall.opened")
+    const firstOpenRes = await analytics.trackFirstOpenIfNeeded({ appVersion: "1.0" })
+    const surveyRes = await analytics.submitSurvey({ surveyId: "s1", responses: [] })
+    expect(calls).toHaveLength(0)
+    expect(identifyRes).toEqual({ eventId: null, eventName: null, warnings: [] })
+    expect(trackRes).toEqual({ eventId: null, eventName: null, warnings: [] })
+    expect(firstOpenRes).toBeNull()
+    expect(surveyRes.accepted).toBe(0)
+    expect(typeof surveyRes.submissionId).toBe("string")
+  })
+
+  it("disabled: true with a caller-supplied submissionId echoes it back", async () => {
+    const analytics = createGrowthAnalyticsCore({
+      app: "test-app",
+      writeKey: "gte_test",
+      storage: new MemoryStorage(),
+      disabled: true,
+    })
+    const res = await analytics.submitSurvey({ surveyId: "s1", responses: [], submissionId: "my-id" })
+    expect(res.submissionId).toBe("my-id")
+  })
+
   it("markInstalledBeforeTracking suppresses the first app.first_open", async () => {
     const { analytics, calls } = makeInstallAnalytics()
     await analytics.markInstalledBeforeTracking({ appVersion: "1.0.0", buildNumber: "10" })

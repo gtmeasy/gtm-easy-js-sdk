@@ -40,6 +40,7 @@ export const analytics = createGrowthAnalytics({
   writeKey: "<per-app-write-key>", // public SDK key, safe to ship in JS
   environment: "production",       // "staging" for QA
   // endpoint defaults to https://www.gtmeasy.com — override only for self-hosted
+  // disabled: process.env.NODE_ENV === "development", // suppress all network calls in dev
 })
 ```
 
@@ -189,6 +190,7 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 - **Don't hash email/phone before passing to `identify`.** The server hashes; double-hashing breaks Enhanced Matching.
 - **Don't ship the server write key in the browser.** Use the browser-scoped write key for `@gtmeasy/growth/web` and a separate `GTM_EASY_SERVER_WRITE_KEY` for `@gtmeasy/growth/node`.
 - **Don't import from `@gtmeasy/growth` without a subpath** in app code — always pick `/web`, `/node`, or `/react-native`. The barrel export pulls in cross-runtime weight you don't need.
+- **Don't add `if (!disabled)` branches in app code** to suppress analytics in dev. Set `disabled: process.env.NODE_ENV === "development"` in the config instead — all methods still return valid responses and call sites stay clean.
 
 ## 11. Verifying the wire-up
 

@@ -1,6 +1,6 @@
 {
   "name": "@gtmeasy/growth",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "First-party SDK for GTM Easy growth analytics — web, Node, Bun, Deno, React Native. Bridges to Clarity, PostHog, Sentry, Statsig.",
   "license": "MIT",
   "author": "RockieStar Inc.",

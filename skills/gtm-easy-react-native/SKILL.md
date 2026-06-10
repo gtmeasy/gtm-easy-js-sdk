@@ -42,6 +42,7 @@ export const analytics = createGrowthAnalytics({
   platform,
   asyncStorage: AsyncStorage,
   // endpoint defaults to https://www.gtmeasy.com — override only for self-hosted
+  // disabled: __DEV__,  // suppress all network calls in development builds
 })
 ```
 
@@ -209,6 +210,7 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 - **Don't fire `paywall.*` via raw `track`.** Use the typed helpers so connectors stay correct.
 - **Don't hash email/phone before passing to `identify`.** The server hashes; double-hashing breaks Enhanced Matching.
 - **Don't import from `@gtmeasy/growth` without `/react-native`** — the barrel export pulls in browser-only `localStorage` weight.
+- **Don't add `if (!__DEV__)` guards in app code** to suppress analytics in dev. Set `disabled: __DEV__` in the config instead — all methods still return valid responses and call sites stay clean.
 
 ## 11. Verifying the wire-up
 
