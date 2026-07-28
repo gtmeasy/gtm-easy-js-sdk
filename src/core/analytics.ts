@@ -1,6 +1,11 @@
 import { GrowthClickIdStore, CLICK_PROVIDERS, type ClickProvider } from "./click-id-store"
 import { defaultDebugSink, GrowthDebugSink } from "./debug"
-import { emptyDeviceContextProvider, type DeviceContextProvider } from "./device-context"
+import {
+  captureSystemContext,
+  emptyDeviceContextProvider,
+  systemContextAsProperties,
+  type DeviceContextProvider,
+} from "./device-context"
 import { fetchHttp } from "./http"
 import {
   resolveLaunch,
@@ -28,7 +33,7 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.7.0"
+export const GROWTH_JS_SDK_VERSION = "0.8.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
@@ -172,6 +177,8 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     const ctx: GrowthEventProperties = {}
     const device = await Promise.resolve(config.deviceContext.current())
     Object.assign(ctx, device)
+    // Always attach system locale/tz (device provider may already include them on web).
+    Object.assign(ctx, systemContextAsProperties(captureSystemContext()))
     const clicks = await config.clickIdStore.snapshot()
     for (const [k, v] of Object.entries(clicks)) ctx[k] = v
     ctx.sdk = "gtm-easy-js"
@@ -639,15 +646,9 @@ function normalizeIdentityField(value: string | null | undefined): string | null
 }
 
 function defaultLocale(): string | null {
-  try {
-    const lang = (globalThis as { navigator?: { language?: string } }).navigator?.language
-    if (lang) return lang
-  } catch { /* ignore */ }
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().locale ?? null
-  } catch { return null }
+  return captureSystemContext().locale
 }
 
 function defaultTimezone(): string | null {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null } catch { return null }
+  return captureSystemContext().timezone
 }

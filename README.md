@@ -4,6 +4,14 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.8.0)
+
+- **System context (locale / timezone).** Every identify / track / survey call sends BCP-47
+  `locale` and IANA `timezone`, and mirrors a denser snapshot under `properties._ctx`
+  (`region`, `language`, `utc_offset_min`, `preferred_languages`). Helpers:
+  `captureSystemContext()` / `systemContextAsProperties()`. Shipped lockstep at **0.8.0**
+  with Swift / Kotlin.
+
 ## What's new (v0.6.0)
 
 - **Installs vs. updates**: new `trackFirstOpenIfNeeded({ appVersion, buildNumber })` fires `app.first_open` **only** for a genuine fresh install (at-most-once, persisted before send) and emits a non-install `app.updated` when the bundle version/build changes between launches. The bare `trackFirstOpen()` is now **deprecated** — calling it every launch counted app updates as new installs and inflated acquisition numbers. Shipped lockstep at **0.6.0** across TypeScript / Swift / Kotlin.

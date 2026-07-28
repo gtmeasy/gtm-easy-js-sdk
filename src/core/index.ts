@@ -4,7 +4,14 @@ export { fetchHttp } from "./http"
 export { generateUuid } from "./uuid"
 export { GrowthClickIdStore, CLICK_PROVIDERS, type ClickProvider } from "./click-id-store"
 export { GrowthDebugSink, defaultDebugSink, type DebugEvent, type DebugKind } from "./debug"
-export { emptyDeviceContextProvider, webDeviceContextProvider, type DeviceContextProvider } from "./device-context"
+export {
+  emptyDeviceContextProvider,
+  webDeviceContextProvider,
+  captureSystemContext,
+  systemContextAsProperties,
+  type DeviceContextProvider,
+  type SystemContext,
+} from "./device-context"
 export {
   trackPaywallOpened,
   trackPaywallPlanSelected,
