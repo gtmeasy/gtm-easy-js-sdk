@@ -57,10 +57,11 @@ Sends events to the GTM Easy ingestion API, identifies users, persists an anonym
           type === Application.ApplicationReleaseType.DEVELOPMENT) return "debug"
       if (type === Application.ApplicationReleaseType.AD_HOC ||
           type === Application.ApplicationReleaseType.ENTERPRISE) return "internalTest"
-      // Newer expo-application only; guard so older SDKs still compile/run.
-      const env = await Application.getAppleStoreEnvironmentAsync?.()
-      if (env === Application.AppleStoreEnvironment?.SANDBOX) return "testflight"
-      if (env === Application.AppleStoreEnvironment?.PRODUCTION) return "production"
+      // expo-application with getAppleStoreEnvironmentAsync(): "production" | "sandbox" | "xcode" | null
+      const env = await Application.getAppleStoreEnvironmentAsync()
+      if (env === "sandbox") return "testflight"
+      if (env === "xcode") return "debug"
+      if (env === "production") return "production"
     } catch { /* fall through: unknown → sends */ }
     return undefined
   }
