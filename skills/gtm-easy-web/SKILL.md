@@ -41,8 +41,11 @@ export const analytics = createGrowthAnalytics({
   environment: "production",       // "staging" for QA
   // endpoint defaults to https://www.gtmeasy.com — override only for self-hosted
   // disabled: process.env.NODE_ENV === "development", // suppress all network calls in dev
+  // suppressTestBuilds: true, buildChannel: isPreviewDeploy ? "internalTest" : undefined,
 })
 ```
+
+**Test builds (`suppressTestBuilds`, v0.9.0+).** On web/Node the SDK auto-detects nothing (`resolvedBuildChannel` is `"unknown"`, which is never suppressed) and does not read `NODE_ENV`. To drop dev / preview traffic, pass `suppressTestBuilds: true` plus an explicit `buildChannel` (`"debug"`, `"internalTest"`, `"production"`) from your own build config, or use `disabled`. Suppressed clients send nothing and write nothing to storage; `analytics.isSuppressed` reports the result.
 
 For plain HTML / no-bundler sites, the dashboard's **Install → Web script** snippet drops a `<script async src=".../api/v1/growth/script.js" data-app=... data-write-key=...>` that does the same thing without npm.
 

@@ -65,6 +65,22 @@ export interface GrowthAnalyticsConfiguration {
    * without removing SDK call sites from your code.
    */
   disabled?: boolean
+  /**
+   * When true, drop every event from debug / TestFlight / internal-test builds:
+   * the client is suppressed when the resolved build channel is `debug`,
+   * `testflight` or `internalTest` (`unknown` and `production` always send).
+   * Suppressed clients make no network calls and write no SDK state to storage.
+   * Default false.
+   */
+  suppressTestBuilds?: boolean
+  /**
+   * Override the auto-detected build channel. Auto-detection only sees React
+   * Native's `__DEV__` (→ `"debug"`); everything else is `"unknown"`, so pass
+   * this from native info (e.g. `expo-application`) for TestFlight / Ad Hoc.
+   */
+  buildChannel?: import("./build-channel").GrowthBuildChannel
+  /** Override build-channel auto-detection. Used for tests; default reads RN `__DEV__`. */
+  detectBuildChannel?: () => import("./build-channel").GrowthBuildChannel
 }
 
 export interface GrowthStorage {
@@ -224,6 +240,13 @@ export interface GrowthBridge {
 }
 
 export interface GrowthAnalytics {
+  /**
+   * True when this client sends nothing: `disabled`, or `suppressTestBuilds` with a
+   * `debug` / `testflight` / `internalTest` channel. Fixed at construction.
+   */
+  readonly isSuppressed: boolean
+  /** The build channel resolved at construction (override, else auto-detected). */
+  readonly resolvedBuildChannel: import("./build-channel").GrowthBuildChannel
   identify(userIdOrArgs?: string | IdentifyArgs | null, traits?: GrowthEventProperties): Promise<IngestResponse>
   track(eventName: string, properties?: GrowthEventProperties, args?: TrackArgs): Promise<IngestResponse>
   /**

@@ -2,6 +2,8 @@ import { createGrowthAnalyticsCore } from "../core/analytics"
 import { MemoryStorage } from "../core/storage"
 import type { GrowthAnalytics, GrowthAnalyticsConfiguration } from "../core/types"
 
+export type { GrowthBuildChannel } from "../core/build-channel"
+
 export type NodeGrowthAnalyticsConfiguration = Omit<GrowthAnalyticsConfiguration, "platform"> & {
   platform?: GrowthAnalyticsConfiguration["platform"]
 }

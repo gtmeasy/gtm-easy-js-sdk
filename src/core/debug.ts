@@ -15,6 +15,8 @@ export interface DebugEvent {
   label: string
   properties: GrowthEventProperties
   occurredAt: string
+  /** True when the client is suppressed (`disabled` / `suppressTestBuilds`): shown, never sent. */
+  suppressed?: boolean
 }
 
 type Listener = (event: DebugEvent) => void
@@ -36,7 +38,7 @@ export class GrowthDebugSink {
     }
     try {
       // eslint-disable-next-line no-console
-      console.log(`[GrowthAnalytics] ${event.kind} ${event.label}`, event.properties)
+      console.log(`[GrowthAnalytics]${event.suppressed ? " (suppressed)" : ""} ${event.kind} ${event.label}`, event.properties)
     } catch { /* ignore */ }
   }
 

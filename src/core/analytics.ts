@@ -1,3 +1,4 @@
+import { isSuppressedBuild, resolveBuildChannel, type GrowthBuildChannel } from "./build-channel"
 import { GrowthClickIdStore, CLICK_PROVIDERS, type ClickProvider } from "./click-id-store"
 import { defaultDebugSink, GrowthDebugSink } from "./debug"
 import {
@@ -17,6 +18,7 @@ import {
   type GrowthUpdateReason,
 } from "./install-state"
 import { MemoryStorage } from "./storage"
+import { createSuppressedClient, logSuppressed } from "./suppressed-client"
 import {
   GrowthAnalyticsError,
   GROWTH_DEFAULT_ENDPOINT,
@@ -33,7 +35,7 @@ import {
 } from "./types"
 import { generateUuid } from "./uuid"
 
-export const GROWTH_JS_SDK_VERSION = "0.8.0"
+export const GROWTH_JS_SDK_VERSION = "0.9.0"
 
 const ANON_KEY = "gtm_easy_growth_anonymous_id"
 const USER_ID_KEY = "gtm_easy_growth_user_id"
@@ -42,7 +44,12 @@ const EMAIL_KEY = "gtm_easy_growth_email"
 
 interface BuiltAnalytics extends GrowthAnalytics {
   /** Internal: exposed so platform adapters (web, RN, node) can fan out auto-instrumentation. */
-  _config(): GrowthAnalyticsConfiguration & { environment: "production" | "staging" | "development"; platform: string }
+  _config(): GrowthAnalyticsConfiguration & {
+    environment: "production" | "staging" | "development"
+    platform: string
+    buildChannel: GrowthBuildChannel
+    suppressed: boolean
+  }
 }
 
 /**
@@ -78,32 +85,29 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
     installProbe: input.installProbe,
     trackBuildChanges: input.trackBuildChanges ?? false,
     disabled: input.disabled ?? false,
+    suppressTestBuilds: input.suppressTestBuilds ?? false,
+    buildChannel: resolveBuildChannel(input.buildChannel, input.detectBuildChannel),
+    suppressed: false,
   }
+  config.suppressed = isSuppressedBuild({
+    disabled: config.disabled,
+    suppressTestBuilds: config.suppressTestBuilds,
+    channel: config.buildChannel,
+  })
 
-  if (config.disabled) {
-    let _userId: string | null = null
-    const _anonId = config.generateId()
-    const _noop: IngestResponse = { eventId: null, eventName: null, warnings: [] }
-    return {
-      identify() { return Promise.resolve(_noop) },
-      track() { return Promise.resolve(_noop) },
-      trackFirstOpen() { return Promise.resolve(_noop) },
-      trackFirstOpenIfNeeded() { return Promise.resolve(null) },
-      trackAppUpdated() { return Promise.resolve(_noop) },
-      trackAppOpen() { return Promise.resolve(_noop) },
-      trackPurchaseCompleted() { return Promise.resolve(_noop) },
-      submitWebReferrer() { return Promise.resolve(_noop) },
-      submitSurvey(args) { return Promise.resolve({ submissionId: args.submissionId ?? config.generateId(), accepted: 0, warnings: [] }) },
-      addBridge() { return () => {} },
-      setUserId(id) { _userId = id },
-      getUserId() { return _userId },
-      getAnonymousId() { return Promise.resolve(_anonId) },
-      reset() { _userId = null; return Promise.resolve() },
-      recordClickId() { return Promise.resolve() },
-      captureClickIds() { return Promise.resolve(0) },
-      markInstalledBeforeTracking() { return Promise.resolve() },
-      _config() { return config },
-    }
+  if (config.suppressed) {
+    // Suppressed (disabled or a test build): noop client — no network, no storage writes.
+    logSuppressed(config.buildChannel, config.disabled)
+    return createSuppressedClient({
+      config,
+      storage,
+      anonKey: ANON_KEY,
+      generateId: config.generateId,
+      now: config.now,
+      debug: config.debug,
+      debugSink: config.debugSink,
+      buildChannel: config.buildChannel,
+    })
   }
 
   let userId: string | null = null
@@ -617,6 +621,8 @@ export function createGrowthAnalyticsCore(input: GrowthAnalyticsConfiguration): 
   void ensureIdentity()
 
   return {
+    isSuppressed: false,
+    resolvedBuildChannel: config.buildChannel,
     identify,
     track,
     trackFirstOpen,

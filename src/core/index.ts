@@ -1,4 +1,12 @@
 export { createGrowthAnalyticsCore, GROWTH_JS_SDK_VERSION } from "./analytics"
+export {
+  detectBuildChannel,
+  resolveBuildChannel,
+  isSuppressedBuild,
+  SUPPRESSED_BUILD_CHANNELS,
+  type GrowthBuildChannel,
+  type BuildChannelGlobals,
+} from "./build-channel"
 export { MemoryStorage, WebStorage, ReactNativeStorage } from "./storage"
 export { fetchHttp } from "./http"
 export { generateUuid } from "./uuid"

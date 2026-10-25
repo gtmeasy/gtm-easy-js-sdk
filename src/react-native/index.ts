@@ -2,6 +2,8 @@ import { createGrowthAnalyticsCore } from "../core/analytics"
 import { MemoryStorage, ReactNativeStorage, type AsyncStorageLike } from "../core/storage"
 import type { GrowthAnalytics, GrowthAnalyticsConfiguration } from "../core/types"
 
+export type { GrowthBuildChannel } from "../core/build-channel"
+
 // Survey capture is runtime-neutral — re-export the helpers + types so an RN
 // consumer imports them from this one subpath (the skills forbid bare-root imports).
 export { surveyAnswer, trackSurveyShown, trackSurveyStarted } from "../core/survey-events"

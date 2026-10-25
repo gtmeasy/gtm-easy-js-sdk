@@ -42,9 +42,12 @@ export const analytics = createGrowthAnalytics({
   platform,
   asyncStorage: AsyncStorage,
   // endpoint defaults to https://www.gtmeasy.com — override only for self-hosted
-  // disabled: __DEV__,  // suppress all network calls in development builds
+  suppressTestBuilds: true, // drop events from __DEV__ / TestFlight / Ad Hoc builds (no network, no storage writes)
+  // buildChannel: "testflight", // override when auto-detect can't see it (only __DEV__ is auto-detected)
 })
 ```
+
+**Test builds (`suppressTestBuilds`, v0.9.0+).** Turn it on in every app. JS can only auto-detect `__DEV__` (→ `"debug"`); TestFlight / Ad Hoc / Play-testing builds are `"unknown"` and still send unless you pass `buildChannel`. For Expo, resolve it with `expo-application` before constructing the client: `getIosApplicationReleaseTypeAsync()` `SIMULATOR`/`DEVELOPMENT` → `"debug"`, `AD_HOC`/`ENTERPRISE` → `"internalTest"`; `getAppleStoreEnvironmentAsync()` (where available) `SANDBOX` → `"testflight"`. See the README "What's new (0.9.0)" recipe. Check `analytics.isSuppressed` / `analytics.resolvedBuildChannel` when verifying. A suppressed build never writes install state, so the later App Store build on the same device still sends `app.first_open` once.
 
 For Expo, the dashboard endpoint MUST be HTTPS. iOS ATS blocks HTTP — point at LAN dev only if you set `app.json → ios.infoPlist.NSAppTransportSecurity.NSAllowsArbitraryLoads`.
 
@@ -210,7 +213,7 @@ Attach free-form `metadata` to the whole submission (`submitSurvey({ ..., metada
 - **Don't fire `paywall.*` via raw `track`.** Use the typed helpers so connectors stay correct.
 - **Don't hash email/phone before passing to `identify`.** The server hashes; double-hashing breaks Enhanced Matching.
 - **Don't import from `@gtmeasy/growth` without `/react-native`** — the barrel export pulls in browser-only `localStorage` weight.
-- **Don't add `if (!__DEV__)` guards in app code** to suppress analytics in dev. Set `disabled: __DEV__` in the config instead — all methods still return valid responses and call sites stay clean.
+- **Don't add `if (!__DEV__)` guards in app code** to suppress analytics in dev. Set `suppressTestBuilds: true` (or `disabled: true` for a hard off switch) in the config instead — all methods still return valid responses, nothing is sent or persisted, and call sites stay clean.
 
 ## 11. Verifying the wire-up
 

@@ -4,6 +4,80 @@ First-party TypeScript SDK for [GTM Easy](https://gtmeasy.com) growth analytics 
 
 Sends events to the GTM Easy ingestion API, identifies users, persists an anonymous ID, persists every ad-platform click ID, drives the paywall funnel with typed helpers, captures install / referrer attribution, and bridges a single user across the analytics tools you already use:
 
+## What's new (v0.9.0)
+
+- **Suppress test builds.** New `suppressTestBuilds: true` drops every event from debug,
+  TestFlight and internal-test builds so they stop polluting installs, funnels and
+  notifications. Optional `buildChannel` overrides detection. The client exposes
+  `isSuppressed` and `resolvedBuildChannel`. Default `false` (non-breaking). Shipped
+  lockstep with Swift 0.11.0 / Kotlin 0.9.0.
+
+  ```ts
+  type GrowthBuildChannel = "debug" | "testflight" | "internalTest" | "production" | "unknown"
+
+  const analytics = createGrowthAnalytics({
+    app: "<app>", writeKey: "<key>", platform,
+    asyncStorage: AsyncStorage,
+    suppressTestBuilds: true,
+    // buildChannel: "testflight",   // optional override; always wins over detection
+  })
+  analytics.isSuppressed          // true when nothing will be sent
+  analytics.resolvedBuildChannel  // "debug" | ... | "unknown"
+  ```
+
+  Rule: `suppressed = disabled || (suppressTestBuilds && channel ∈ {debug, testflight, internalTest})`.
+  `unknown` and `production` are **never** suppressed — if detection can't tell, events send.
+
+  **Detection (JS):** React Native `__DEV__ === true` → `debug` (automatic). Everything
+  else (TestFlight, Ad Hoc, Play testing, web, Node) is `unknown` unless you pass
+  `buildChannel`. The SDK does not sniff `NODE_ENV`.
+
+  **When suppressed:** no network calls, and **no SDK state is written to storage**
+  (install state, identity, click ids, anonymous id), so a TestFlight build later replaced
+  by the App Store build on the same device still sends `app.first_open` once. An already
+  persisted anonymous id is reused; otherwise one is generated in memory only. Identity
+  setters update in memory. With `debug: true`, events are mirrored to the debug sink with
+  `suppressed: true`. One `console.info` line at init: `GTM Easy: suppressing events (channel=debug)`.
+  The same guarantees now apply to plain `disabled: true`.
+
+  **Expo recipe** — resolve the channel from native info with `expo-application`, then create
+  the client:
+
+  ```ts
+  import * as Application from "expo-application"
+  import { Platform } from "react-native"
+  import type { GrowthBuildChannel } from "@gtmeasy/growth/react-native"
+
+  async function resolveBuildChannel(): Promise<GrowthBuildChannel | undefined> {
+    if (__DEV__) return "debug" // also auto-detected; explicit for clarity
+    if (Platform.OS !== "ios") return undefined // Android: pass your test-flavor channel yourself
+    try {
+      const type = await Application.getIosApplicationReleaseTypeAsync()
+      if (type === Application.ApplicationReleaseType.SIMULATOR ||
+          type === Application.ApplicationReleaseType.DEVELOPMENT) return "debug"
+      if (type === Application.ApplicationReleaseType.AD_HOC ||
+          type === Application.ApplicationReleaseType.ENTERPRISE) return "internalTest"
+      // Newer expo-application only; guard so older SDKs still compile/run.
+      const env = await Application.getAppleStoreEnvironmentAsync?.()
+      if (env === Application.AppleStoreEnvironment?.SANDBOX) return "testflight"
+      if (env === Application.AppleStoreEnvironment?.PRODUCTION) return "production"
+    } catch { /* fall through: unknown → sends */ }
+    return undefined
+  }
+
+  export async function createClient() {
+    return createGrowthAnalytics({
+      app: "<app>", writeKey: "<key>", platform: Platform.OS === "ios" ? "ios" : "android",
+      asyncStorage: AsyncStorage,
+      suppressTestBuilds: true,
+      buildChannel: await resolveBuildChannel(),
+    })
+  }
+  ```
+
+  Because the channel is resolved once at construction, create the client after the await
+  (e.g. in your launch sequence) rather than as a synchronous module-level singleton.
+
 ## What's new (v0.8.0)
 
 - **System context (locale / timezone).** Every identify / track / survey call sends BCP-47
