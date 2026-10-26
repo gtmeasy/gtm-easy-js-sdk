@@ -70,9 +70,13 @@ Two channels, both driven by `.github/workflows/release.yml`:
   ```
 - The push-to-main step publishes an unstable build of that bumped version; the tag push publishes the stable one.
 
-### Required secrets
+### Publishing auth
 
-- `NPM_TOKEN` — npm **Automation** token with publish access to `@gtmeasy/growth`. Classic tokens fail in CI with `npm error code EOTP` because npm enforces 2FA on writes; Automation tokens are the documented exception that skip the OTP prompt. Generate via npmjs.com → Access Tokens → Generate New Token → **Automation**. Update via `gh secret set NPM_TOKEN -R gtmeasy/gtm-easy-js-sdk`.
+No npm token. Both paths publish through npm **trusted publishing** (OIDC): the
+package's npmjs.com settings trust `gtmeasy/gtm-easy-js-sdk` → `release.yml`, and
+the job's `id-token: write` permission mints the credential. Requires npm >= 11.5.1
+(the workflow installs a pinned npm). If you rename the workflow file, update the
+trusted publisher on npmjs.com first or publishing fails with 404.
 
 ### Provenance
 
